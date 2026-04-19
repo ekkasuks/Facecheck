@@ -35,7 +35,7 @@ const CONFIG = {
   // ══════════════════════════════════════════
   ROLE_MAP: {
     'admin@school.ac.th':        'admin',
-    'ekasak@school.ac.th':       'admin',    // ← ใส่ Gmail ของอาจารย์เอกศักดิ์
+    'ekkasuks@esanpt1.go.th':       'admin',    // ← ใส่ Gmail ของอาจารย์เอกศักดิ์
     'teacher@school.ac.th':      'teacher',
     // เพิ่ม email ครูคนอื่นๆ ที่นี่:
     // 'somjai@school.ac.th':    'teacher',
