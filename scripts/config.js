@@ -48,7 +48,7 @@ const CONFIG = {
   ROLE_MAP: {
     // ★ แก้ email ด้านล่างให้เป็น Gmail จริงของแต่ละคน ★
 
-    'ใส่gmail-ของคุณ@gmail.com':  'admin',    // ← อาจารย์เอกศักดิ์ (แก้ตรงนี้)
+    'ekkasuks@esanpt1.go.th':  'admin',    // ← อาจารย์เอกศักดิ์ (แก้ตรงนี้)
 
     // ตัวอย่าง (ถ้า Gmail คือ ekasak.p@gmail.com):
     // 'ekasak.p@gmail.com':      'admin',
@@ -63,8 +63,8 @@ const CONFIG = {
   // email ที่ไม่อยู่ใน ROLE_MAP → ได้ role = 'viewer' อัตโนมัติ
 
   // School
-  SCHOOL_NAME:  'โรงเรียนสาธิตมหาวิทยาลัย',
-  SCHOOL_SHORT: 'ร.ร.สาธิต',
+  SCHOOL_NAME:  'โรงเรียนบ้านใหม่',
+  SCHOOL_SHORT: 'ร.ร.บ้านใหม่',
 
   // Face Recognition
   FACE_MATCH_THRESHOLD:    0.5,
