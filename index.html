@@ -3,85 +3,539 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FaceAttend — ระบบเช็คชื่อด้วยใบหน้า</title>
+<title>FaceAttend — เข้าสู่ระบบ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles/main.css">
+
+<!-- Google Identity Services (GSI) — OAuth 2.0 Library ล่าสุดของ Google -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
 <style>
-.bg-mesh{position:fixed;inset:0;z-index:0;background:radial-gradient(ellipse at 20% 20%,rgba(79,70,229,.15) 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,rgba(16,185,129,.1) 0%,transparent 50%)}
-.floating-orb{position:fixed;border-radius:50%;filter:blur(80px);animation:float 8s ease-in-out infinite;z-index:0}
-.orb-1{width:400px;height:400px;background:rgba(79,70,229,.12);top:-100px;left:-100px}
-.orb-2{width:300px;height:300px;background:rgba(16,185,129,.1);bottom:-50px;right:-50px;animation-delay:3s}
-@keyframes float{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-20px) scale(1.05)}}
-.login-container{position:relative;z-index:1;width:100%;max-width:460px;padding:20px}
-.login-card{background:var(--bg-card);border:1px solid var(--border);border-radius:24px;padding:48px 40px;box-shadow:var(--shadow);animation:slideUp .6s cubic-bezier(.16,1,.3,1)}
+/* ── Background ── */
+.bg-mesh{position:fixed;inset:0;z-index:0;
+  background:
+    radial-gradient(ellipse at 20% 20%,rgba(79,70,229,.18) 0%,transparent 55%),
+    radial-gradient(ellipse at 80% 80%,rgba(16,185,129,.12) 0%,transparent 55%),
+    radial-gradient(ellipse at 60% 10%,rgba(139,92,246,.1) 0%,transparent 40%)}
+.orb{position:fixed;border-radius:50%;filter:blur(80px);animation:floatOrb 9s ease-in-out infinite;z-index:0}
+.orb1{width:420px;height:420px;background:rgba(79,70,229,.1);top:-120px;left:-100px}
+.orb2{width:320px;height:320px;background:rgba(16,185,129,.08);bottom:-60px;right:-60px;animation-delay:3s}
+.orb3{width:220px;height:220px;background:rgba(139,92,246,.08);top:40%;right:15%;animation-delay:1.5s}
+@keyframes floatOrb{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-24px) scale(1.06)}}
+
+/* ── Card ── */
+.wrap{position:relative;z-index:1;width:100%;max-width:460px;padding:20px}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:24px;padding:44px 40px;box-shadow:var(--shadow);animation:slideUp .6s cubic-bezier(.16,1,.3,1)}
 @keyframes slideUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
-.logo-wrap{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:40px}
-.logo-icon{width:72px;height:72px;background:linear-gradient(135deg,var(--primary),var(--primary-light));border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:32px;margin-bottom:16px;animation:pulse-glow 3s ease-in-out infinite}
-@keyframes pulse-glow{0%,100%{box-shadow:0 0 20px rgba(79,70,229,.4)}50%{box-shadow:0 0 40px rgba(79,70,229,.7)}}
-.logo-title{font-size:26px;font-weight:700;letter-spacing:-.5px}
-.logo-sub{color:var(--text-muted);font-size:14px;margin-top:4px}
-.form-group{margin-bottom:20px}
-.form-label{display:block;font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
-.form-input{width:100%;background:var(--bg-card2);border:1px solid var(--border);color:var(--text);padding:14px 16px;border-radius:12px;font-size:15px;font-family:inherit;transition:all .2s;outline:none}
+@media(max-width:500px){.card{padding:32px 24px}}
+
+/* ── Logo ── */
+.logo-wrap{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:36px}
+.logo-icon{width:70px;height:70px;background:linear-gradient(135deg,var(--primary),var(--primary-light));border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:14px;animation:glowPulse 3s ease-in-out infinite}
+@keyframes glowPulse{0%,100%{box-shadow:0 0 20px rgba(79,70,229,.4)}50%{box-shadow:0 0 44px rgba(79,70,229,.75)}}
+.logo-title{font-size:24px;font-weight:700;letter-spacing:-.5px}
+.logo-sub{color:var(--text-muted);font-size:13px;margin-top:4px}
+
+/* ── Setup Banner ── */
+.setup-banner{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);border-radius:12px;padding:14px 16px;margin-bottom:20px;font-size:13px;display:none}
+.setup-banner.show{display:block}
+.setup-banner b{color:var(--warning)}
+.setup-step{display:flex;gap:8px;align-items:flex-start;margin-top:8px}
+.setup-num{width:20px;height:20px;border-radius:50%;background:var(--warning);color:#000;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.setup-text{font-size:12px;color:var(--text-muted);line-height:1.5}
+.setup-text code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:11px;color:var(--primary-light)}
+
+/* ── Google Button (Official Style) ── */
+.google-btn{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:12px;
+  background:#fff;color:#3c4043;border:1px solid #dadce0;
+  padding:12px 20px;border-radius:12px;font-size:15px;font-weight:500;
+  font-family:inherit;cursor:pointer;transition:all .2s;
+  box-shadow:0 1px 3px rgba(0,0,0,.12);
+}
+.google-btn:hover{background:#f8f9fa;box-shadow:0 2px 8px rgba(0,0,0,.2);transform:translateY(-1px)}
+.google-btn:active{transform:translateY(0)}
+.google-btn:disabled{opacity:.6;cursor:not-allowed}
+[data-theme="light"] .google-btn{background:#fff}
+[data-theme="dark"] .google-btn,
+:not([data-theme]) .google-btn{background:#131314;color:#e3e3e3;border-color:#444}
+[data-theme="dark"] .google-btn:hover,
+:not([data-theme]) .google-btn:hover{background:#1e1e1f}
+
+/* ── Form ── */
+.form-group{margin-bottom:18px}
+.form-label{display:block;font-size:11px;font-weight:700;margin-bottom:7px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px}
+.form-input{width:100%;background:var(--bg-card2);border:1px solid var(--border);color:var(--text);padding:12px 14px;border-radius:11px;font-size:14px;font-family:inherit;transition:all .2s;outline:none}
 .form-input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,70,229,.15)}
-.btn-primary{width:100%;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:#fff;border:none;padding:15px;border-radius:12px;font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .2s}
-.btn-primary:hover{transform:translateY(-1px);box-shadow:0 10px 30px rgba(79,70,229,.4)}
-.btn-secondary{width:100%;background:var(--bg-card2);border:1px solid var(--border);color:var(--text);padding:13px;border-radius:12px;font-size:15px;font-weight:500;font-family:inherit;cursor:pointer;margin-top:12px;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .2s}
-.btn-secondary:hover{border-color:var(--primary)}
-.divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--text-muted);font-size:13px}
+.btn-login{width:100%;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:#fff;border:none;padding:13px;border-radius:11px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;transition:all .2s;margin-top:4px}
+.btn-login:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(79,70,229,.45)}
+.divider{display:flex;align-items:center;gap:12px;margin:18px 0;color:var(--text-muted);font-size:13px}
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
-.demo-hint{text-align:center;font-size:12px;color:var(--text-muted);margin-top:20px}
-.demo-hint span{color:var(--primary);font-weight:600;cursor:pointer;text-decoration:underline}
-.error-box{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#fca5a5;padding:12px 16px;border-radius:10px;font-size:13px;margin-bottom:16px;display:none}
-.error-box.show{display:block;animation:shake .3s ease}
-@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
-.version-tag{text-align:center;font-size:11px;color:var(--text-muted);margin-top:24px;opacity:.5}
+.error-box{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#fca5a5;padding:11px 14px;border-radius:10px;font-size:13px;margin-bottom:14px;display:none}
+.error-box.show{display:block;animation:errShake .3s ease}
+@keyframes errShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.demo-hint{text-align:center;font-size:12px;color:var(--text-muted);margin-top:18px}
+.demo-hint span{color:var(--primary-light);font-weight:600;cursor:pointer}
+.demo-hint span:hover{text-decoration:underline}
+.version-tag{text-align:center;font-size:11px;color:var(--text-muted);margin-top:20px;opacity:.4}
+
+/* ── OAuth loading ── */
+.oauth-loading{display:none;align-items:center;justify-content:center;gap:10px;padding:14px;color:var(--text-muted);font-size:13px}
+.oauth-loading.show{display:flex}
 </style>
 </head>
 <body style="display:flex;align-items:center;justify-content:center;min-height:100vh;overflow:hidden">
+
 <div class="bg-mesh"></div>
-<div class="floating-orb orb-1"></div>
-<div class="floating-orb orb-2"></div>
+<div class="orb orb1"></div>
+<div class="orb orb2"></div>
+<div class="orb orb3"></div>
 
-<button class="theme-toggle" onclick="toggleTheme()" title="เปลี่ยน Theme" style="position:fixed;top:20px;right:20px;z-index:100">🌙</button>
+<button onclick="toggleTheme()" title="เปลี่ยน Theme"
+  style="position:fixed;top:18px;right:18px;z-index:100;width:40px;height:40px;border-radius:10px;background:var(--bg-card);border:1px solid var(--border);cursor:pointer;font-size:17px;display:flex;align-items:center;justify-content:center"
+  id="themeBtn">🌙</button>
 
-<div class="login-container">
-  <div class="login-card">
+<div class="wrap">
+  <div class="card">
+
+    <!-- Logo -->
     <div class="logo-wrap">
       <div class="logo-icon">🎓</div>
       <div class="logo-title">FaceAttend</div>
-      <div class="logo-sub">ระบบเช็คชื่อนักเรียนด้วยใบหน้า</div>
+      <div class="logo-sub">ระบบเช็คชื่อนักเรียนด้วยใบหน้า · <span id="schoolNameDisplay">โรงเรียนสาธิต</span></div>
     </div>
 
-    <div class="error-box" id="errorMsg">⚠️ อีเมลหรือรหัสผ่านไม่ถูกต้อง</div>
+    <!-- Setup Guide Banner (แสดงเมื่อยังไม่ได้ตั้งค่า Client ID) -->
+    <div class="setup-banner" id="setupBanner">
+      <b>⚙️ ยังไม่ได้ตั้งค่า Google OAuth</b> — ปุ่ม "Sign in with Google" ยังไม่ทำงาน
+      <div class="setup-step">
+        <div class="setup-num">1</div>
+        <div class="setup-text">ไปที่ <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--primary-light)">Google Cloud Console</a> → สร้างโปรเจค</div>
+      </div>
+      <div class="setup-step">
+        <div class="setup-num">2</div>
+        <div class="setup-text">APIs &amp; Services → Credentials → <b>Create OAuth 2.0 Client ID</b> → เลือก "Web application"</div>
+      </div>
+      <div class="setup-step">
+        <div class="setup-num">3</div>
+        <div class="setup-text">Authorized JavaScript origins: ใส่ URL เว็บของคุณ เช่น <code>https://username.github.io</code></div>
+      </div>
+      <div class="setup-step">
+        <div class="setup-num">4</div>
+        <div class="setup-text">คัดลอก <b>Client ID</b> (รูปแบบ <code>xxxx.apps.googleusercontent.com</code>)</div>
+      </div>
+      <div class="setup-step">
+        <div class="setup-num">5</div>
+        <div class="setup-text">เปิดไฟล์ <code>scripts/config.js</code> แก้ไข <code>GOOGLE_CLIENT_ID: 'วาง Client ID ที่นี่'</code></div>
+      </div>
+    </div>
 
+    <!-- Error box -->
+    <div class="error-box" id="errorMsg">⚠️ <span id="errorText">เกิดข้อผิดพลาด</span></div>
+
+    <!-- Google Sign-In Button (Official GSI) -->
+    <button class="google-btn" id="googleBtn" onclick="startGoogleLogin()">
+      <svg width="20" height="20" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      <span id="googleBtnText">Sign in with Google</span>
+    </button>
+
+    <!-- OAuth Loading indicator -->
+    <div class="oauth-loading" id="oauthLoading">
+      <div class="loading-spinner"></div>
+      <span>กำลังยืนยันตัวตนกับ Google...</span>
+    </div>
+
+    <div class="divider">หรือเข้าสู่ระบบด้วยรหัสผ่าน</div>
+
+    <!-- Email / Password Login -->
     <div class="form-group">
       <label class="form-label">อีเมล</label>
-      <input type="email" class="form-input" id="emailInput" placeholder="teacher@school.ac.th" value="admin@school.ac.th">
+      <input type="email" class="form-input" id="emailInput"
+        placeholder="teacher@school.ac.th" autocomplete="email">
     </div>
     <div class="form-group">
       <label class="form-label">รหัสผ่าน</label>
-      <input type="password" class="form-input" id="passwordInput" placeholder="••••••••" value="admin1234">
+      <input type="password" class="form-input" id="passwordInput"
+        placeholder="••••••••" autocomplete="current-password">
     </div>
-
-    <button class="btn-primary" onclick="doLogin()"><span id="loginBtnText">🔐 เข้าสู่ระบบ</span></button>
-
-    <div class="divider">หรือ</div>
-
-    <button class="btn-secondary" onclick="loginGoogle()">
-      <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-      เข้าสู่ระบบด้วย Google
+    <button class="btn-login" onclick="doEmailLogin()">
+      <span id="loginBtnText">🔐 เข้าสู่ระบบ</span>
     </button>
 
     <div class="demo-hint">
-      ทดลองใช้: <span onclick="fillDemo('admin')">Admin</span> · <span onclick="fillDemo('teacher')">ครู</span> · <span onclick="fillDemo('viewer')">Viewer</span>
+      Demo: <span onclick="fillDemo('admin')">Admin</span> ·
+            <span onclick="fillDemo('teacher')">ครู</span> ·
+            <span onclick="fillDemo('viewer')">Viewer</span>
     </div>
-    <div class="version-tag">FaceAttend v2.1.0 · face-api.js + Google Workspace</div>
+    <div class="version-tag">FaceAttend v2.2 · face-api.js + Google Workspace</div>
   </div>
 </div>
 
 <script src="scripts/config.js"></script>
-<script src="scripts/auth.js"></script>
+<script>
+// ════════════════════════════════════════════
+// Google OAuth 2.0 — Google Identity Services (GIS)
+// ════════════════════════════════════════════
+
+let googleClient = null;   // google.accounts.oauth2 client
+let googleUser   = null;   // decoded JWT payload หลัง login สำเร็จ
+
+function initGoogleOAuth() {
+  const clientId = CONFIG.GOOGLE_CLIENT_ID;
+
+  // ── ตรวจว่า Client ID ตั้งค่าแล้วหรือยัง ──
+  if (!clientId || clientId.includes('YOUR_GOOGLE') || clientId === '') {
+    document.getElementById('setupBanner').classList.add('show');
+    document.getElementById('googleBtn').disabled = true;
+    document.getElementById('googleBtnText').textContent = 'Google OAuth ยังไม่ได้ตั้งค่า';
+    return;
+  }
+
+  // ── ซ่อน banner เมื่อ Client ID พร้อม ──
+  document.getElementById('setupBanner').classList.remove('show');
+
+  // ── Initialize Google Identity Services ──
+  // google.accounts.id = Sign In With Google (one-tap + popup)
+  if (typeof google === 'undefined' || !google.accounts) {
+    console.warn('GSI library ยังโหลดไม่เสร็จ — รอสักครู่');
+    setTimeout(initGoogleOAuth, 800);
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id:         clientId,
+    callback:          handleGoogleCredential,   // รับ JWT credential
+    auto_select:       false,
+    cancel_on_tap_outside: true,
+    ux_mode:           'popup',                  // เปิด popup แทน redirect
+    context:           'signin',
+  });
+
+  console.log('[OAuth] Google Identity Services พร้อมแล้ว ✅');
+}
+
+// ── เรียกเมื่อกดปุ่ม Sign in with Google ──
+function startGoogleLogin() {
+  const clientId = CONFIG.GOOGLE_CLIENT_ID;
+  if (!clientId || clientId.includes('YOUR_GOOGLE')) {
+    showError('กรุณาตั้งค่า GOOGLE_CLIENT_ID ใน scripts/config.js ก่อน');
+    return;
+  }
+
+  setGoogleBtnLoading(true);
+
+  // Prompt Google One-Tap / Popup
+  google.accounts.id.prompt((notification) => {
+    if (notification.isNotDisplayed()) {
+      // One-tap ถูก block (เช่น user ปิด) → ใช้ popup แทน
+      console.log('One-tap not displayed:', notification.getNotDisplayedReason());
+      openGooglePopup();
+    } else if (notification.isSkippedMoment()) {
+      console.log('One-tap skipped:', notification.getSkippedReason());
+      openGooglePopup();
+    }
+  });
+}
+
+// ── เปิด Google Popup แบบ manual ──
+function openGooglePopup() {
+  const clientId = CONFIG.GOOGLE_CLIENT_ID;
+  const scope    = 'openid email profile';
+  const redirectUri = window.location.origin + window.location.pathname.replace('index.html','') + 'oauth2callback.html';
+
+  // สร้าง OAuth2 URL
+  const params = new URLSearchParams({
+    client_id:     clientId,
+    redirect_uri:  redirectUri,
+    response_type: 'token id_token',   // implicit flow — ไม่ต้องมี backend
+    scope,
+    nonce:         Math.random().toString(36).slice(2),
+    prompt:        'select_account',
+  });
+
+  const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+
+  // เปิด popup
+  const popup = window.open(
+    oauthUrl,
+    'googleOAuth',
+    'width=500,height=620,scrollbars=yes,resizable=yes,left=' +
+    (screen.width/2 - 250) + ',top=' + (screen.height/2 - 310)
+  );
+
+  if (!popup) {
+    showError('Browser บล็อก popup — กรุณาอนุญาต popup สำหรับเว็บนี้');
+    setGoogleBtnLoading(false);
+    return;
+  }
+
+  setOAuthLoading(true);
+
+  // ตรวจว่า popup ส่ง token กลับมาหรือเปล่า
+  const timer = setInterval(() => {
+    try {
+      if (popup.closed) {
+        clearInterval(timer);
+        setGoogleBtnLoading(false);
+        setOAuthLoading(false);
+      }
+      // รับ postMessage จาก oauth2callback.html
+    } catch(_) {}
+  }, 500);
+
+  // รับ message จาก popup (oauth2callback.html จะ postMessage กลับมา)
+  window.addEventListener('message', function onMsg(e) {
+    if (e.origin !== window.location.origin) return;
+    if (e.data?.type === 'GOOGLE_OAUTH_SUCCESS') {
+      window.removeEventListener('message', onMsg);
+      clearInterval(timer);
+      popup.close();
+      setOAuthLoading(false);
+      processGoogleToken(e.data.credential || e.data.id_token, e.data.userInfo);
+    }
+    if (e.data?.type === 'GOOGLE_OAUTH_ERROR') {
+      window.removeEventListener('message', onMsg);
+      clearInterval(timer);
+      popup.close();
+      setOAuthLoading(false);
+      setGoogleBtnLoading(false);
+      showError('Google Login ล้มเหลว: ' + e.data.error);
+    }
+  });
+}
+
+// ── รับ JWT Credential จาก Google One-Tap ──
+function handleGoogleCredential(response) {
+  setOAuthLoading(true);
+  const credential = response.credential;   // JWT token
+  processGoogleToken(credential, null);
+}
+
+// ── Decode JWT และ Login ──
+function processGoogleToken(jwtToken, preDecoded) {
+  try {
+    let payload;
+
+    if (preDecoded) {
+      payload = preDecoded;
+    } else {
+      // Decode JWT (ไม่ต้อง verify signature ฝั่ง client — Google verify แล้ว)
+      const base64Url = jwtToken.split('.')[1];
+      const base64    = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      payload = JSON.parse(atob(base64));
+    }
+
+    console.log('[OAuth] Google user:', payload.email, payload.name);
+
+    // ตรวจว่า token หมดอายุหรือยัง
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      showError('Google token หมดอายุ กรุณา Login ใหม่');
+      setGoogleBtnLoading(false);
+      setOAuthLoading(false);
+      return;
+    }
+
+    // ตรวจ email domain (optional — กรองเฉพาะ domain โรงเรียน)
+    // const allowedDomain = 'school.ac.th';
+    // if (!payload.email.endsWith('@' + allowedDomain)) {
+    //   showError('อนุญาตเฉพาะ @' + allowedDomain + ' เท่านั้น');
+    //   return;
+    // }
+
+    // สร้าง user session
+    const user = {
+      email:       payload.email,
+      name:        payload.name || payload.email,
+      picture:     payload.picture || '',
+      role:        resolveRole(payload.email),   // ดู role จาก config
+      loginMethod: 'google',
+      googleToken: jwtToken,
+    };
+
+    sessionStorage.setItem('user', JSON.stringify(user));
+    console.log('[OAuth] Login success → role:', user.role);
+
+    // Redirect ไป dashboard
+    window.location.href = 'dashboard.html';
+
+  } catch (err) {
+    console.error('[OAuth] processGoogleToken error:', err);
+    showError('ประมวลผล Google token ไม่สำเร็จ: ' + err.message);
+    setGoogleBtnLoading(false);
+    setOAuthLoading(false);
+  }
+}
+
+// ── กำหนด Role จาก Email ──
+function resolveRole(email) {
+  // ตั้งค่า role mapping ใน config.js → CONFIG.ROLE_MAP
+  const roleMap = CONFIG.ROLE_MAP || {};
+  if (roleMap[email]) return roleMap[email];
+
+  // Default: ถ้าไม่ได้ระบุใน map → teacher
+  // Admin email ต้องระบุชัดเจนใน ROLE_MAP
+  return 'teacher';
+}
+
+// ════════════════════════════════════════════
+// Email / Password Login (ผ่าน Apps Script)
+// ════════════════════════════════════════════
+
+const DEMO_ACCOUNTS = {
+  admin:   { email:'admin@school.ac.th',   password:'admin1234',   role:'admin',   name:'อาจารย์เอกศักดิ์ ปรีติประสงค์' },
+  teacher: { email:'teacher@school.ac.th', password:'teacher1234', role:'teacher', name:'อาจารย์สมใจ ดีงาม' },
+  viewer:  { email:'viewer@school.ac.th',  password:'viewer1234',  role:'viewer',  name:'ผู้ปกครอง ทดสอบ' },
+};
+
+async function doEmailLogin() {
+  const email    = document.getElementById('emailInput').value.trim();
+  const password = document.getElementById('passwordInput').value;
+  const btn      = document.getElementById('loginBtnText');
+
+  if (!email || !password) { showError('กรุณากรอก Email และรหัสผ่าน'); return; }
+
+  btn.textContent = '⏳ กำลังตรวจสอบ...';
+  clearError();
+
+  try {
+    // ── ลอง Apps Script API ก่อน ──
+    if (CONFIG._hasRealAPI) {
+      try {
+        const res = await fetch(CONFIG.API_URL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body:    JSON.stringify({ action:'login', email, password }),
+          mode:    'cors',
+        });
+        const data = await res.json();
+        if (data.success) {
+          const u = { ...data.data, loginMethod:'password' };
+          sessionStorage.setItem('user', JSON.stringify(u));
+          window.location.href = 'dashboard.html';
+          return;
+        } else {
+          throw new Error(data.error || 'Login failed');
+        }
+      } catch (apiErr) {
+        console.warn('[Login] API failed:', apiErr.message, '— trying demo accounts');
+      }
+    }
+
+    // ── Fallback: Demo accounts ──
+    await new Promise(r => setTimeout(r, 600));  // simulate delay
+    const found = Object.values(DEMO_ACCOUNTS)
+      .find(a => a.email === email && a.password === password);
+
+    if (found) {
+      sessionStorage.setItem('user', JSON.stringify({ ...found, loginMethod:'password' }));
+      window.location.href = 'dashboard.html';
+    } else {
+      showError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    }
+  } finally {
+    btn.textContent = '🔐 เข้าสู่ระบบ';
+  }
+}
+
+function fillDemo(role) {
+  const a = DEMO_ACCOUNTS[role];
+  document.getElementById('emailInput').value    = a.email;
+  document.getElementById('passwordInput').value = a.password;
+}
+
+// ════════════════════════════════════════════
+// UI Helpers
+// ════════════════════════════════════════════
+
+function showError(msg) {
+  const box = document.getElementById('errorMsg');
+  document.getElementById('errorText').textContent = msg;
+  box.style.display = 'block';
+  box.classList.add('show');
+  setTimeout(() => { box.classList.remove('show'); }, 4000);
+}
+
+function clearError() {
+  document.getElementById('errorMsg').style.display = 'none';
+}
+
+function setGoogleBtnLoading(loading) {
+  const btn = document.getElementById('googleBtn');
+  document.getElementById('googleBtnText').textContent = loading
+    ? 'กำลังเชื่อมต่อ Google...' : 'Sign in with Google';
+  btn.disabled = loading;
+}
+
+function setOAuthLoading(show) {
+  document.getElementById('oauthLoading').classList.toggle('show', show);
+}
+
+function toggleTheme() {
+  const root = document.documentElement;
+  const isLight = root.getAttribute('data-theme') === 'light';
+  if (isLight) {
+    root.removeAttribute('data-theme');
+    localStorage.setItem('theme','dark');
+    document.getElementById('themeBtn').textContent = '🌙';
+  } else {
+    root.setAttribute('data-theme','light');
+    localStorage.setItem('theme','light');
+    document.getElementById('themeBtn').textContent = '☀️';
+  }
+}
+
+// ════════════════════════════════════════════
+// Init
+// ════════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Theme
+  if (localStorage.getItem('theme') === 'light') {
+    document.documentElement.setAttribute('data-theme','light');
+    document.getElementById('themeBtn').textContent = '☀️';
+  }
+
+  // School name
+  if (CONFIG.SCHOOL_SHORT) {
+    document.getElementById('schoolNameDisplay').textContent = CONFIG.SCHOOL_SHORT;
+  }
+
+  // Init Google OAuth (รอ GSI library โหลดเสร็จ)
+  if (typeof google !== 'undefined' && google.accounts) {
+    initGoogleOAuth();
+  } else {
+    // GSI ยังโหลดไม่เสร็จ → รอ
+    window.addEventListener('load', () => setTimeout(initGoogleOAuth, 300));
+  }
+
+  // Enter key
+  document.addEventListener('keypress', e => {
+    if (e.key === 'Enter') doEmailLogin();
+  });
+
+  // ตรวจ redirect จาก oauth2callback.html (Hash params)
+  const hash = window.location.hash;
+  if (hash.includes('id_token=') || hash.includes('access_token=')) {
+    handleHashToken(hash);
+  }
+});
+
+// Handle token ที่อาจ redirect มาใน hash (implicit flow backup)
+function handleHashToken(hash) {
+  const params = new URLSearchParams(hash.slice(1));
+  const idToken = params.get('id_token');
+  if (idToken) {
+    setOAuthLoading(true);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    processGoogleToken(idToken, null);
+  }
+}
+</script>
 </body>
 </html>
