@@ -33,19 +33,38 @@ const CONFIG = {
   //  Teacher: เช็คชื่อ + ดูรายงานห้องตัวเอง
   //  Viewer: ดู Dashboard อย่างเดียว
   // ══════════════════════════════════════════
+  // ══════════════════════════════════════════
+  //  ⚠️  ใส่ Gmail จริงของอาจารย์ลงในนี้  ⚠️
+  //
+  //  วิธีดู Gmail ของตัวเอง:
+  //  เปิด Gmail → คลิกรูปโปรไฟล์มุมขวาบน
+  //  → จะเห็น email เช่น   ekasak.p@gmail.com
+  //
+  //  ข้อควรระวัง:
+  //  - ต้องพิมพ์ตัวเล็กทั้งหมด (lowercase)
+  //  - ห้ามมีช่องว่างหน้า-หลัง
+  //  - Gmail จะเป็น @gmail.com เสมอ (ไม่ใช่ @school.ac.th)
+  // ══════════════════════════════════════════
   ROLE_MAP: {
-    'admin@school.ac.th':        'admin',
-    'ekkasuks@esanpt1.go.th':       'admin',    // ← ใส่ Gmail ของอาจารย์เอกศักดิ์
-    'teacher@school.ac.th':      'teacher',
-    // เพิ่ม email ครูคนอื่นๆ ที่นี่:
-    // 'somjai@school.ac.th':    'teacher',
-    // 'parent@gmail.com':       'viewer',
+    // ★ แก้ email ด้านล่างให้เป็น Gmail จริงของแต่ละคน ★
+
+    'ใส่gmail-ของคุณ@gmail.com':  'admin',    // ← อาจารย์เอกศักดิ์ (แก้ตรงนี้)
+
+    // ตัวอย่าง (ถ้า Gmail คือ ekasak.p@gmail.com):
+    // 'ekasak.p@gmail.com':      'admin',
+
+    // ครูคนอื่นๆ (เพิ่มได้เรื่อยๆ):
+    // 'teacher1@gmail.com':      'teacher',
+    // 'teacher2@school.ac.th':   'teacher',
+
+    // ผู้ปกครอง / Viewer:
+    // 'parent@gmail.com':        'viewer',
   },
-  // หมายเหตุ: email ที่ไม่ได้ระบุใน ROLE_MAP จะได้ role = 'teacher' อัตโนมัติ
+  // email ที่ไม่อยู่ใน ROLE_MAP → ได้ role = 'viewer' อัตโนมัติ
 
   // School
-  SCHOOL_NAME:  'โรงเรียนบ้านใหม่',
-  SCHOOL_SHORT: 'ร.ร.บ้านใหม่',
+  SCHOOL_NAME:  'โรงเรียนสาธิตมหาวิทยาลัย',
+  SCHOOL_SHORT: 'ร.ร.สาธิต',
 
   // Face Recognition
   FACE_MATCH_THRESHOLD:    0.5,
