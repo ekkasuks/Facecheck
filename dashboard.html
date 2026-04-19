@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — FaceAttend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/main.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+.dashboard-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+.dashboard-grid .span-2 { grid-column: span 2; }
+.dashboard-grid .span-3 { grid-column: span 3; }
+.present-ring { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+.ring-label { position: absolute; text-align: center; }
+.ring-label .ring-num { font-size: 28px; font-weight: 800; line-height: 1; }
+.ring-label .ring-sub { font-size: 11px; color: var(--text-muted); }
+.class-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.class-row:last-child { border-bottom: none; }
+.class-bar-wrap { flex: 1; }
+.class-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.class-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.class-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--primary), var(--accent)); transition: width 1s ease; }
+.class-pct { font-size: 13px; font-weight: 700; color: var(--primary-light); min-width: 44px; text-align: right; }
+.recent-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.recent-item:last-child { border-bottom: none; }
+.recent-time { font-size: 12px; color: var(--text-muted); min-width: 48px; }
+.recent-name { flex: 1; font-size: 14px; font-weight: 500; }
+.quick-filter { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.filter-btn { padding: 7px 16px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg-card2); color: var(--text-muted); cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+.filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+.filter-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary-light); }
+@media (max-width: 1100px) {
+  .dashboard-grid { grid-template-columns: 1fr 1fr; }
+  .dashboard-grid .span-3 { grid-column: span 2; }
+}
+@media (max-width: 700px) {
+  .dashboard-grid { grid-template-columns: 1fr; }
+  .dashboard-grid .span-2, .dashboard-grid .span-3 { grid-column: span 1; }
+}
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="topbar" id="topbar"></header>
+    <main class="page-content">
+      <div class="quick-filter" id="rangeFilter">
+        <button class="filter-btn active" onclick="setRange('today',this)">วันนี้</button>
+        <button class="filter-btn" onclick="setRange('week',this)">สัปดาห์นี้</button>
+        <button class="filter-btn" onclick="setRange('month',this)">เดือนนี้</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" id="statsGrid"></div>
+
+      <!-- Charts & Lists -->
+      <div class="dashboard-grid">
+        <!-- Donut + Attendance Chart -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">สรุปการมาเรียน</div>
+              <div class="card-subtitle" id="donutSubtitle">วันนี้</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px">
+            <canvas id="donutChart" width="180" height="180" style="max-width:180px"></canvas>
+            <div id="donutLegend" style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center"></div>
+          </div>
+        </div>
+
+        <!-- Weekly trend -->
+        <div class="card span-2">
+          <div class="card-header">
+            <div>
+              <div class="card-title">แนวโน้มการมาเรียน</div>
+              <div class="card-subtitle">7 วันล่าสุด</div>
+            </div>
+          </div>
+          <canvas id="trendChart" height="120"></canvas>
+        </div>
+
+        <!-- Classroom ranking -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">อันดับห้องเรียน</div>
+          </div>
+          <div id="classRanking"></div>
+        </div>
+
+        <!-- Recent check-ins -->
+        <div class="card span-2">
+          <div class="card-header">
+            <div class="card-title">การเช็คชื่อล่าสุด</div>
+            <a href="attendance.html" class="btn btn-ghost" style="font-size:13px">ดูทั้งหมด →</a>
+          </div>
+          <div id="recentCheckins"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="scripts/config.js"></script>
+<script src="scripts/auth.js"></script>
+<script>
+requireAuth();
+let currentRange = 'today';
+let donutChart, trendChart;
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderSidebar('dashboard');
+  renderTopbar('แดชบอร์ด', 'ภาพรวมระบบเช็คชื่อ');
+  initDashboard();
+});
+
+function setRange(range, btn) {
+  currentRange = range;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  initDashboard();
+}
+
+function filterAttendanceByRange(range) {
+  const all = getAttendance();
+  const { start, end } = getDateRange(range);
+  return all.filter(r => {
+    const d = new Date(r.date);
+    return d >= start && d <= end;
+  });
+}
+
+function initDashboard() {
+  const records = filterAttendanceByRange(currentRange);
+  const students = getStudents();
+  const total = students.length;
+
+  const counts = { present: 0, late: 0, absent: 0, leave: 0 };
+  const seen = new Set();
+  records.forEach(r => {
+    if (!seen.has(r.studentId + r.date)) {
+      seen.add(r.studentId + r.date);
+      counts[r.status] = (counts[r.status] || 0) + 1;
+    }
+  });
+
+  const daysCount = currentRange === 'today' ? 1 : currentRange === 'week' ? 5 : 20;
+  const expectedTotal = total * daysCount;
+  const presentRate = expectedTotal > 0 ? ((counts.present / expectedTotal) * 100).toFixed(1) : 0;
+
+  renderStats(counts, total, presentRate, daysCount);
+  renderDonut(counts);
+  renderTrend();
+  renderClassRanking(students, records);
+  renderRecentCheckins(records);
+}
+
+function renderStats(counts, total, presentRate, days) {
+  const grid = document.getElementById('statsGrid');
+  const statsData = [
+    { label: 'มาเรียน', value: counts.present, icon: '✅', color: '#10b981', change: '+2.1%', up: true },
+    { label: 'สาย', value: counts.late, icon: '⏰', color: '#f59e0b', change: '-0.5%', up: false },
+    { label: 'ขาดเรียน', value: counts.absent, icon: '❌', color: '#ef4444', change: '+1.2%', up: false },
+    { label: 'ลา', value: counts.leave, icon: '📝', color: '#3b82f6', change: '0%', up: true },
+  ];
+
+  grid.innerHTML = statsData.map(s => `
+    <div class="stat-card" style="--stat-color:${s.color}">
+      <div class="stat-icon">${s.icon}</div>
+      <div class="stat-value">${s.value}</div>
+      <div class="stat-label">${s.label}</div>
+      <div class="stat-change ${s.up ? 'stat-up' : 'stat-down'}">
+        ${s.up ? '↑' : '↓'} ${s.change} จากเมื่อวาน
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderDonut(counts) {
+  const ctx = document.getElementById('donutChart').getContext('2d');
+  const data = [counts.present, counts.late, counts.absent, counts.leave];
+  const colors = ['#10b981','#f59e0b','#ef4444','#3b82f6'];
+  const labels = ['มาเรียน','สาย','ขาด','ลา'];
+
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{ data, backgroundColor: colors, borderWidth: 0, hoverOffset: 8 }]
+    },
+    options: {
+      cutout: '72%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => ` ${ctx.label}: ${ctx.raw} คน`
+          }
+        }
+      },
+      animation: { duration: 800, easing: 'easeInOutQuart' }
+    }
+  });
+
+  document.getElementById('donutLegend').innerHTML = labels.map((l,i) => `
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px">
+      <div style="width:10px;height:10px;border-radius:50%;background:${colors[i]}"></div>
+      <span style="color:var(--text-muted)">${l}</span>
+      <span style="font-weight:700">${data[i]}</span>
+    </div>
+  `).join('');
+}
+
+function renderTrend() {
+  const all = getAttendance();
+  const days = [];
+  const present = [], late = [], absent = [];
+  const today = new Date();
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today); d.setDate(today.getDate() - i);
+    if (d.getDay() === 0 || d.getDay() === 6) continue;
+    const dateStr = d.toISOString().split('T')[0];
+    const label = d.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric' });
+    days.push(label);
+
+    const dayRec = all.filter(r => r.date === dateStr);
+    const seen = new Set();
+    let p=0, l=0, a=0;
+    dayRec.forEach(r => {
+      if (!seen.has(r.studentId)) {
+        seen.add(r.studentId);
+        if (r.status === 'present') p++;
+        else if (r.status === 'late') l++;
+        else if (r.status === 'absent') a++;
+      }
+    });
+    present.push(p); late.push(l); absent.push(a);
+  }
+
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  if (trendChart) trendChart.destroy();
+
+  trendChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: days,
+      datasets: [
+        { label: 'มาเรียน', data: present, backgroundColor: 'rgba(16,185,129,0.8)', borderRadius: 4 },
+        { label: 'สาย', data: late, backgroundColor: 'rgba(245,158,11,0.8)', borderRadius: 4 },
+        { label: 'ขาด', data: absent, backgroundColor: 'rgba(239,68,68,0.8)', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          labels: { color: '#94a3b8', font: { family: 'IBM Plex Sans Thai', size: 12 } }
+        }
+      },
+      scales: {
+        x: { stacked: true, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b' } },
+        y: { stacked: true, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b' } }
+      },
+      animation: { duration: 600 }
+    }
+  });
+}
+
+function renderClassRanking(students, records) {
+  const roomMap = {};
+  students.forEach(s => {
+    const key = `${s.class}/${s.room}`;
+    if (!roomMap[key]) roomMap[key] = { total: 0, present: 0 };
+    roomMap[key].total++;
+  });
+
+  records.forEach(r => {
+    const s = students.find(st => st.id === r.studentId);
+    if (!s) return;
+    const key = `${s.class}/${s.room}`;
+    if (roomMap[key] && r.status === 'present') roomMap[key].present++;
+  });
+
+  const rooms = Object.entries(roomMap).map(([name, data]) => ({
+    name,
+    pct: data.total > 0 ? (data.present / data.total * 100) : 0
+  })).sort((a, b) => b.pct - a.pct).slice(0, 6);
+
+  document.getElementById('classRanking').innerHTML = rooms.map((r, i) => `
+    <div class="class-row">
+      <div style="font-size:18px;font-weight:800;color:var(--text-muted);min-width:24px;text-align:center">${i+1}</div>
+      <div class="class-bar-wrap">
+        <div class="class-name">ชั้น ${r.name}</div>
+        <div class="class-bar"><div class="class-bar-fill" style="width:${r.pct}%"></div></div>
+      </div>
+      <div class="class-pct">${r.pct.toFixed(0)}%</div>
+    </div>
+  `).join('');
+}
+
+function renderRecentCheckins(records) {
+  const recent = [...records]
+    .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
+    .slice(0, 8);
+
+  document.getElementById('recentCheckins').innerHTML = recent.map(r => {
+    const s = STATUS_LABELS[r.status];
+    return `
+      <div class="recent-item">
+        <div class="recent-time">${r.time}</div>
+        <div class="avatar-initials avatar" style="font-size:12px;background:linear-gradient(135deg,#4f46e5,#10b981)">${r.studentName.slice(0,2)}</div>
+        <div class="recent-name">${r.studentName}<span class="text-muted text-sm"> · ${r.class}/${r.room}</span></div>
+        <span class="badge ${s.badge}">${s.icon} ${s.label}</span>
+        <span style="font-size:11px;color:var(--text-muted)">${r.method === 'face' ? '📷' : '✍️'}</span>
+      </div>
+    `;
+  }).join('');
+}
+</script>
+</body>
+</html>

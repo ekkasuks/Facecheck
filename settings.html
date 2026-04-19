@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ตั้งค่า — FaceAttend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/main.css">
+<style>
+.settings-layout { display:grid; grid-template-columns:220px 1fr; gap:20px; align-items:start; }
+.settings-nav { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:8px; position:sticky; top:96px; }
+.settings-nav-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px; cursor:pointer; font-size:14px; font-weight:500; color:var(--text-muted); transition:all .2s; }
+.settings-nav-item.active { background:var(--primary-bg); color:var(--primary-light); }
+.settings-nav-item:hover:not(.active) { background:var(--bg-hover); color:var(--text); }
+.settings-panel { display:none; }
+.settings-panel.active { display:block; }
+.setting-section { margin-bottom:28px; }
+.setting-section-title { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); margin-bottom:16px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+.setting-row { display:flex; align-items:center; justify-content:space-between; padding:14px 0; border-bottom:1px solid var(--border); gap:20px; }
+.setting-row:last-child { border-bottom:none; }
+.setting-info { flex:1; }
+.setting-label { font-size:14px; font-weight:600; }
+.setting-desc { font-size:12px; color:var(--text-muted); margin-top:2px; }
+.toggle { position:relative; width:44px; height:24px; flex-shrink:0; }
+.toggle input { display:none; }
+.toggle-slider { position:absolute; inset:0; background:var(--border); border-radius:12px; cursor:pointer; transition:.3s; }
+.toggle-slider::before { content:''; position:absolute; width:18px; height:18px; left:3px; top:3px; background:white; border-radius:50%; transition:.3s; }
+.toggle input:checked + .toggle-slider { background:var(--primary); }
+.toggle input:checked + .toggle-slider::before { transform:translateX(20px); }
+.api-config-card { background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:20px; margin-bottom:16px; }
+.api-status { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:20px; font-size:12px; font-weight:600; }
+.api-status.connected { background:rgba(16,185,129,.15); color:var(--accent); }
+.api-status.disconnected { background:rgba(239,68,68,.15); color:var(--danger); }
+.user-table tr td:first-child { width:40px; }
+.color-swatch { width:24px; height:24px; border-radius:6px; cursor:pointer; border:2px solid var(--border); transition:transform .2s; }
+.color-swatch:hover, .color-swatch.selected { transform:scale(1.2); border-color:var(--text); }
+.color-picker-row { display:flex; gap:8px; flex-wrap:wrap; }
+@media (max-width:768px) { .settings-layout { grid-template-columns:1fr; } .settings-nav { position:static; } }
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="topbar" id="topbar"></header>
+    <main class="page-content">
+      <div class="settings-layout">
+        <!-- Settings Nav -->
+        <div class="settings-nav">
+          <div class="settings-nav-item active" onclick="switchSettingsTab('school',this)">🏫 ข้อมูลโรงเรียน</div>
+          <div class="settings-nav-item" onclick="switchSettingsTab('attendance',this)">📋 การเช็คชื่อ</div>
+          <div class="settings-nav-item" onclick="switchSettingsTab('api',this)">🔌 API / Google</div>
+          <div class="settings-nav-item" onclick="switchSettingsTab('users',this)">👥 ผู้ใช้งาน</div>
+          <div class="settings-nav-item" onclick="switchSettingsTab('appearance',this)">🎨 หน้าตาระบบ</div>
+          <div class="settings-nav-item" onclick="switchSettingsTab('data',this)">💾 ข้อมูล</div>
+        </div>
+
+        <!-- Settings Content -->
+        <div>
+
+          <!-- School -->
+          <div id="tab-school" class="settings-panel active card">
+            <div class="card-header">
+              <div class="card-title">🏫 ข้อมูลโรงเรียน</div>
+              <button class="btn btn-primary" onclick="saveSchoolSettings()">💾 บันทึก</button>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">ข้อมูลทั่วไป</div>
+              <div class="form-group">
+                <label class="form-label">ชื่อโรงเรียน</label>
+                <input type="text" class="form-input" id="schoolName" value="โรงเรียนสาธิตมหาวิทยาลัย">
+              </div>
+              <div class="form-group">
+                <label class="form-label">ชื่อย่อ</label>
+                <input type="text" class="form-input" id="schoolShort" value="ร.ร.สาธิต">
+              </div>
+              <div class="form-group">
+                <label class="form-label">URL โลโก้โรงเรียน</label>
+                <input type="text" class="form-input" id="schoolLogo" placeholder="https://example.com/logo.png">
+              </div>
+              <div class="form-group">
+                <label class="form-label">ที่อยู่โรงเรียน</label>
+                <textarea class="form-textarea" id="schoolAddress" placeholder="123 ถ.สุขุมวิท กรุงเทพฯ 10110"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Attendance Settings -->
+          <div id="tab-attendance" class="settings-panel card">
+            <div class="card-header">
+              <div class="card-title">📋 การตั้งค่าการเช็คชื่อ</div>
+              <button class="btn btn-primary" onclick="saveAttendanceSettings()">💾 บันทึก</button>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">เวลาและสถานะ</div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label">เวลาสาย (หลังเวลานี้ = สาย)</label>
+                  <input type="time" class="form-input" id="lateTime" value="08:30">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">เวลาขาด (หลังเวลานี้ = ขาด)</label>
+                  <input type="time" class="form-input" id="absentTime" value="10:00">
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">กัน Duplicate Check</div>
+                  <div class="setting-desc">ห้ามเช็คชื่อซ้ำในช่วงเวลาที่กำหนด</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <input type="number" class="form-input" style="width:80px" value="10" id="dupMinutes" min="1" max="60">
+                  <span style="font-size:13px;color:var(--text-muted)">นาที</span>
+                </div>
+              </div>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">Face Recognition</div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">ความแม่นยำขั้นต่ำ</div>
+                  <div class="setting-desc">ต่ำกว่านี้จะถือว่าไม่รู้จัก (0.1 = เข้มงวดมาก, 0.7 = ผ่อนคลาย)</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <input type="range" id="threshold" min="0.1" max="0.9" step="0.05" value="0.5" oninput="document.getElementById('thresholdVal').textContent=this.value" style="width:100px">
+                  <span id="thresholdVal" style="font-weight:700;min-width:30px">0.5</span>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">บันทึกภาพ Unknown Face</div>
+                  <div class="setting-desc">เซฟรูปที่ไม่รู้จักลงใน Drive โฟลเดอร์ "Unknown"</div>
+                </div>
+                <label class="toggle"><input type="checkbox" checked id="saveUnknown"><div class="toggle-slider"></div></label>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-label">เปิดเสียงต้อนรับ (TTS)</div>
+                  <div class="setting-desc">อ่านชื่อนักเรียนออกเสียงเมื่อเช็คชื่อสำเร็จ</div>
+                </div>
+                <label class="toggle"><input type="checkbox" checked id="enableTTS"><div class="toggle-slider"></div></label>
+              </div>
+            </div>
+          </div>
+
+          <!-- API Config -->
+          <div id="tab-api" class="settings-panel card">
+            <div class="card-header">
+              <div class="card-title">🔌 การเชื่อมต่อ Google</div>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">Google Apps Script API</div>
+              <div class="api-config-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                  <div style="font-weight:700">Apps Script Endpoint</div>
+                  <span class="api-status disconnected" id="apiStatus">⚡ ไม่ได้เชื่อมต่อ</span>
+                </div>
+                <input type="text" class="form-input" id="apiUrl" placeholder="https://script.google.com/macros/s/YOUR_ID/exec" style="margin-bottom:10px">
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-primary" onclick="testAPIConnection()">🔍 ทดสอบการเชื่อมต่อ</button>
+                  <button class="btn btn-ghost" onclick="saveApiSettings()">💾 บันทึก</button>
+                </div>
+              </div>
+              <div class="api-config-card">
+                <div style="font-weight:700;margin-bottom:14px">Google OAuth 2.0</div>
+                <input type="text" class="form-input" id="googleClientId" placeholder="YOUR_CLIENT_ID.apps.googleusercontent.com">
+                <div style="margin-top:10px">
+                  <button class="btn btn-ghost" onclick="testOAuth()">🔐 ทดสอบ Google Login</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">Google Sheet Schema</div>
+              <div style="background:var(--bg-card2);border-radius:var(--radius-sm);padding:16px;font-size:12px;color:var(--text-muted);font-family:monospace;line-height:2">
+                <div>📋 <strong>Students</strong>: studentId, prefix, firstName, lastName, classLevel, room, number, gender, faceImageUrl, faceDescriptorJson, activeStatus</div>
+                <div>📋 <strong>Attendance</strong>: attendanceId, date, time, studentId, status, method, deviceId, note</div>
+                <div>📋 <strong>Users</strong>: email, name, role, allowedClassRoom</div>
+                <div>📋 <strong>Settings</strong>: schoolName, schoolLogoUrl, checkDuplicateMinutes, lateTime, absentTime</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Users -->
+          <div id="tab-users" class="settings-panel card">
+            <div class="card-header">
+              <div class="card-title">👥 จัดการผู้ใช้งาน</div>
+              <button class="btn btn-primary" onclick="openAddUserModal()">+ เพิ่มผู้ใช้</button>
+            </div>
+            <div class="table-wrap">
+              <table class="user-table">
+                <thead>
+                  <tr><th>Avatar</th><th>ชื่อ</th><th>อีเมล</th><th>บทบาท</th><th>ห้องเรียน</th><th>จัดการ</th></tr>
+                </thead>
+                <tbody id="usersTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Appearance -->
+          <div id="tab-appearance" class="settings-panel card">
+            <div class="card-header">
+              <div class="card-title">🎨 หน้าตาระบบ</div>
+              <button class="btn btn-primary" onclick="saveAppearance()">💾 บันทึก</button>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">ธีม</div>
+              <div class="setting-row">
+                <div class="setting-info"><div class="setting-label">Dark Mode</div><div class="setting-desc">สลับระหว่าง Dark / Light</div></div>
+                <label class="toggle"><input type="checkbox" id="darkModeToggle" onchange="toggleTheme()"><div class="toggle-slider"></div></label>
+              </div>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">สีหลัก</div>
+              <div class="color-picker-row" id="colorPicker">
+                <div class="color-swatch selected" style="background:#4f46e5" data-color="#4f46e5" onclick="selectColor('#4f46e5',this)"></div>
+                <div class="color-swatch" style="background:#0891b2" data-color="#0891b2" onclick="selectColor('#0891b2',this)"></div>
+                <div class="color-swatch" style="background:#059669" data-color="#059669" onclick="selectColor('#059669',this)"></div>
+                <div class="color-swatch" style="background:#dc2626" data-color="#dc2626" onclick="selectColor('#dc2626',this)"></div>
+                <div class="color-swatch" style="background:#d97706" data-color="#d97706" onclick="selectColor('#d97706',this)"></div>
+                <div class="color-swatch" style="background:#7c3aed" data-color="#7c3aed" onclick="selectColor('#7c3aed',this)"></div>
+              </div>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">การแสดงผล</div>
+              <div class="setting-row">
+                <div class="setting-info"><div class="setting-label">แสดงนาฬิกาบน Topbar</div></div>
+                <label class="toggle"><input type="checkbox" checked id="showClock"><div class="toggle-slider"></div></label>
+              </div>
+              <div class="setting-row">
+                <div class="setting-info"><div class="setting-label">Animation</div><div class="setting-desc">เปิด/ปิด transition effects</div></div>
+                <label class="toggle"><input type="checkbox" checked id="enableAnim"><div class="toggle-slider"></div></label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Data -->
+          <div id="tab-data" class="settings-panel card">
+            <div class="card-header">
+              <div class="card-title">💾 จัดการข้อมูล</div>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">Export ข้อมูล</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <button class="btn btn-ghost" onclick="exportAllData()">📥 Export ข้อมูลทั้งหมด (JSON)</button>
+                <button class="btn btn-ghost" onclick="exportAttendanceCSV()">📊 Export การเช็คชื่อ (CSV)</button>
+              </div>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">Import ข้อมูล</div>
+              <div style="display:flex;gap:10px">
+                <label class="btn btn-ghost" style="cursor:pointer">
+                  📤 Import รายชื่อนักเรียน (CSV)
+                  <input type="file" accept=".csv" onchange="importStudentsCSV(this)" style="display:none">
+                </label>
+              </div>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">ล้างข้อมูล</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <button class="btn btn-ghost" onclick="clearAttendanceData()">🗑️ ล้างข้อมูลการเช็คชื่อทั้งหมด</button>
+                <button class="btn btn-danger" onclick="clearAllData()">⚠️ Reset ระบบทั้งหมด</button>
+              </div>
+            </div>
+            <div class="setting-section">
+              <div class="setting-section-title">สถิติข้อมูล</div>
+              <div id="dataStats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="scripts/config.js"></script>
+<script src="scripts/auth.js"></script>
+<script>
+requireAuth();
+const mockUsers = [
+  { id: 1, name: 'อาจารย์เอกศักดิ์ ปรีติประสงค์', email: 'admin@school.ac.th', role: 'admin', rooms: 'ทุกห้อง' },
+  { id: 2, name: 'อาจารย์สมใจ ดีงาม', email: 'teacher@school.ac.th', role: 'teacher', rooms: 'ม.1/1' },
+  { id: 3, name: 'ผู้ปกครอง ทดสอบ', email: 'viewer@school.ac.th', role: 'viewer', rooms: '—' },
+];
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderSidebar('settings');
+  renderTopbar('ตั้งค่าระบบ', 'Configuration & Management');
+  renderUsersTable();
+  renderDataStats();
+  // Sync dark toggle
+  document.getElementById('darkModeToggle').checked = localStorage.getItem('theme') !== 'light';
+});
+
+function switchSettingsTab(tab, el) {
+  document.querySelectorAll('.settings-nav-item').forEach(i => i.classList.remove('active'));
+  document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(`tab-${tab}`).classList.add('active');
+}
+
+function renderUsersTable() {
+  document.getElementById('usersTableBody').innerHTML = mockUsers.map(u => `
+    <tr>
+      <td><div class="user-avatar avatar-initials" style="width:36px;height:36px;font-size:13px">${u.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div></td>
+      <td style="font-weight:600">${u.name}</td>
+      <td style="color:var(--text-muted)">${u.email}</td>
+      <td><span class="badge ${u.role==='admin'?'badge-purple':u.role==='teacher'?'badge-blue':'badge-gray'}">${ROLE_LABELS[u.role]?.icon} ${ROLE_LABELS[u.role]?.label}</span></td>
+      <td style="font-size:13px">${u.rooms}</td>
+      <td><button class="btn-icon" onclick="showToast('แก้ไขผู้ใช้','${u.name}','info')">✏️</button></td>
+    </tr>
+  `).join('');
+}
+
+function renderDataStats() {
+  const students = getStudents();
+  const attendance = getAttendance();
+  document.getElementById('dataStats').innerHTML = [
+    { label: 'นักเรียน', value: students.length, icon: '👥' },
+    { label: 'บันทึกการเช็คชื่อ', value: attendance.length, icon: '📋' },
+    { label: 'มีข้อมูลใบหน้า', value: students.filter(s => s.faceDescriptor).length, icon: '👤' },
+  ].map(s => `
+    <div class="stat-card"><div style="font-size:24px;margin-bottom:6px">${s.icon}</div><div class="stat-value">${s.value}</div><div class="stat-label">${s.label}</div></div>
+  `).join('');
+}
+
+function saveSchoolSettings() {
+  CONFIG.SCHOOL_NAME = document.getElementById('schoolName').value;
+  CONFIG.SCHOOL_SHORT = document.getElementById('schoolShort').value;
+  showToast('บันทึกสำเร็จ', 'ข้อมูลโรงเรียนอัปเดตแล้ว', 'success');
+}
+
+function saveAttendanceSettings() {
+  CONFIG.LATE_TIME = document.getElementById('lateTime').value;
+  CONFIG.FACE_MATCH_THRESHOLD = parseFloat(document.getElementById('threshold').value);
+  showToast('บันทึกสำเร็จ', 'ตั้งค่าการเช็คชื่ออัปเดตแล้ว', 'success');
+}
+
+function saveApiSettings() {
+  CONFIG.API_URL = document.getElementById('apiUrl').value;
+  showToast('บันทึก API URL', '', 'success');
+}
+
+async function testAPIConnection() {
+  const url = document.getElementById('apiUrl').value;
+  if (!url || url.includes('YOUR_SCRIPT')) {
+    showToast('กรุณากรอก API URL จริง', '', 'warning');
+    return;
+  }
+  showToast('กำลังทดสอบ...', '', 'info');
+  try {
+    const res = await fetch(url + '?action=ping', { method: 'GET', mode: 'cors' });
+    if (res.ok) {
+      document.getElementById('apiStatus').textContent = '✅ เชื่อมต่อสำเร็จ';
+      document.getElementById('apiStatus').className = 'api-status connected';
+      showToast('เชื่อมต่อสำเร็จ', 'Apps Script พร้อมใช้งาน', 'success');
+    } else throw new Error('HTTP ' + res.status);
+  } catch (err) {
+    showToast('เชื่อมต่อไม่สำเร็จ', err.message, 'error');
+  }
+}
+
+function testOAuth() {
+  showToast('Google OAuth', 'ทดสอบได้เมื่อ deploy บน GitHub Pages', 'info');
+}
+
+function selectColor(color, el) {
+  document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+  document.documentElement.style.setProperty('--primary', color);
+  showToast('เปลี่ยนสีแล้ว', '', 'success');
+}
+
+function saveAppearance() {
+  showToast('บันทึกการตั้งค่าหน้าตา', '', 'success');
+}
+
+function openAddUserModal() {
+  showToast('เพิ่มผู้ใช้', 'ฟีเจอร์นี้ต้องเชื่อมต่อ Google Apps Script', 'info');
+}
+
+function exportAllData() {
+  const data = {
+    students: getStudents(),
+    attendance: getAttendance(),
+    exportedAt: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `faceattend_backup_${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  showToast('Export สำเร็จ', '', 'success');
+}
+
+function exportAttendanceCSV() {
+  const records = getAttendance();
+  const rows = [
+    ['วันที่','เวลา','รหัส','ชื่อ','ชั้น','ห้อง','สถานะ','วิธี'],
+    ...records.map(r => [r.date, r.time, r.studentId, r.studentName, r.class, r.room, STATUS_LABELS[r.status].label, r.method])
+  ];
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `attendance_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  showToast('Export CSV สำเร็จ', `${records.length} รายการ`, 'success');
+}
+
+function importStudentsCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const lines = e.target.result.split('\n').slice(1);
+    let count = 0;
+    const students = getStudents();
+    lines.forEach(line => {
+      if (!line.trim()) return;
+      const cols = line.split(',').map(c => c.replace(/^"|"$/g,'').trim());
+      if (cols.length >= 7) {
+        const [id, prefix, firstName, lastName, cls, room, no, gender] = cols;
+        if (!id) return;
+        if (!students.find(s => s.id === id)) {
+          students.push({ id, prefix: prefix||'ด.ช.', firstName, lastName, class: cls||'ม.1', room: room||'1', no: parseInt(no)||1, gender: gender||'ชาย', status:'active', imageUrl:'', faceDescriptor: null });
+          count++;
+        }
+      }
+    });
+    saveStudents(students);
+    showToast('Import สำเร็จ', `เพิ่ม ${count} คน`, 'success');
+    renderDataStats();
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function clearAttendanceData() {
+  confirm('ล้างข้อมูลการเช็คชื่อ', 'ต้องการลบข้อมูลการเช็คชื่อทั้งหมด?', () => {
+    localStorage.removeItem('fa_attendance');
+    showToast('ล้างข้อมูลสำเร็จ', '', 'success');
+    renderDataStats();
+  });
+}
+
+function clearAllData() {
+  confirm('⚠️ Reset ระบบ', 'ต้องการล้างข้อมูลทั้งหมดรวมถึงข้อมูลนักเรียน? ไม่สามารถกู้คืนได้', () => {
+    localStorage.clear();
+    showToast('Reset สำเร็จ', 'กำลัง reload...', 'info');
+    setTimeout(() => location.reload(), 1500);
+  });
+}
+</script>
+</body>
+</html>

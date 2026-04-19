@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>เช็คชื่อ — FaceAttend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/main.css">
+<script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
+<style>
+.attend-grid{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start}
+.camera-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.cam-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border)}
+.cam-title{font-size:15px;font-weight:700}
+.live-badge{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--danger);transition:background .3s}
+.live-dot.on{background:var(--accent);animation:livePulse 1.5s infinite}
+@keyframes livePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+.video-wrap{position:relative;background:#000;aspect-ratio:4/3;overflow:hidden}
+#videoEl{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+#faceCanvas{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none}
+.scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(79,70,229,.9),rgba(16,185,129,.9),transparent);opacity:0;transition:opacity .3s}
+.scan-line.on{opacity:1;animation:scanAnim 3s ease-in-out infinite}
+@keyframes scanAnim{0%{top:8%}50%{top:88%}100%{top:8%}}
+.overlay-msg{position:absolute;bottom:10px;left:10px;right:10px;background:rgba(0,0,0,.72);border-radius:8px;padding:8px 12px;font-size:13px;text-align:center;backdrop-filter:blur(4px)}
+.cam-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.96);color:#555;gap:12px}
+.cam-placeholder span:first-child{font-size:52px;animation:breathe 3s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:.8;transform:scale(1.1)}}
+.model-overlay{position:absolute;inset:0;background:rgba(0,0,0,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:20}
+.model-overlay.hidden{display:none}
+.model-bar{width:220px;height:6px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden}
+.model-fill{height:100%;background:linear-gradient(90deg,var(--primary),var(--accent));border-radius:3px;transition:width .5s ease}
+.cam-controls{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border)}
+.cbtn{flex:1;padding:10px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-card2);color:var(--text);cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:5px}
+.cbtn.cbtn-primary{background:linear-gradient(135deg,var(--primary),var(--primary-light));border-color:transparent;color:#fff}
+.cbtn:hover:not(:disabled){transform:translateY(-1px);opacity:.9}
+.cbtn:disabled{opacity:.35;cursor:not-allowed}
+.ai-info-bar{padding:9px 16px;border-top:1px solid var(--border);display:flex;gap:14px;font-size:11px;color:var(--text-muted);flex-wrap:wrap}
+.result-card{border-radius:var(--radius);padding:20px;border:1px solid var(--border);background:var(--bg-card);transition:all .3s}
+.result-card.rc-success{border-color:var(--accent);background:rgba(16,185,129,.06);animation:rcPop .4s cubic-bezier(.16,1,.3,1)}
+.result-card.rc-late{border-color:var(--warning);background:rgba(245,158,11,.06);animation:rcPop .4s cubic-bezier(.16,1,.3,1)}
+.result-card.rc-dup{border-color:var(--warning);background:rgba(245,158,11,.04)}
+.result-card.rc-unknown{border-color:var(--danger);background:rgba(239,68,68,.05);animation:rcShake .4s ease}
+@keyframes rcPop{from{transform:scale(.95);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes rcShake{0%,100%{transform:translateX(0)}25%,75%{transform:translateX(-5px)}50%{transform:translateX(5px)}}
+.r-avatar{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0}
+.r-name{font-size:17px;font-weight:800;line-height:1.2}
+.r-meta{font-size:13px;color:var(--text-muted);margin-top:3px}
+.today-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.today-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.t-list{max-height:360px;overflow-y:auto}
+.t-list::-webkit-scrollbar{width:4px}
+.t-list::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:2px}
+.t-row{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:13px;animation:rowIn .3s ease}
+@keyframes rowIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.t-row:last-child{border-bottom:none}
+.t-row:hover{background:var(--bg-hover)}
+.mode-tabs{display:flex;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px;margin-bottom:18px;gap:4px}
+.m-tab{flex:1;padding:10px;text-align:center;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-muted);transition:all .2s;border:none;background:none;font-family:inherit}
+.m-tab.active{background:linear-gradient(135deg,var(--primary),var(--primary-light));color:#fff}
+.manual-panel{display:none}
+.manual-panel.show{display:block}
+.s-row{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);margin-bottom:6px;transition:all .2s}
+.s-row.mp{background:rgba(16,185,129,.07);border-color:rgba(16,185,129,.3)}
+.s-row.ml{background:rgba(245,158,11,.07);border-color:rgba(245,158,11,.3)}
+.s-row.ma{background:rgba(239,68,68,.07);border-color:rgba(239,68,68,.3)}
+.s-row.mlv{background:rgba(59,130,246,.07);border-color:rgba(59,130,246,.3)}
+.s-btns{display:flex;gap:4px;margin-left:auto}
+.s-mb{padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card2);cursor:pointer;font-size:11px;font-weight:600;font-family:inherit;transition:all .2s;color:var(--text-muted)}
+.s-mb.sp{background:rgba(16,185,129,.2);border-color:var(--accent);color:var(--accent)}
+.s-mb.sl{background:rgba(245,158,11,.2);border-color:var(--warning);color:var(--warning)}
+.s-mb.sa{background:rgba(239,68,68,.2);border-color:var(--danger);color:var(--danger)}
+.s-mb.slv{background:rgba(59,130,246,.2);border-color:var(--info);color:var(--info)}
+@media(max-width:900px){.attend-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="topbar" id="topbar"></header>
+    <main class="page-content">
+
+      <div class="mode-tabs">
+        <button class="m-tab active" id="tabA" onclick="switchMode('auto')">📷 อัตโนมัติ (Face Recognition)</button>
+        <button class="m-tab" id="tabM" onclick="switchMode('manual')">✍️ เช็คชื่อ Manual</button>
+      </div>
+
+      <!-- Auto Face Mode -->
+      <div id="autoPanel" class="attend-grid">
+        <div class="camera-card">
+          <div class="cam-header">
+            <span class="cam-title">📷 Face Recognition Camera</span>
+            <div class="live-badge">
+              <div class="live-dot" id="liveDot"></div>
+              <span id="liveText">OFFLINE</span>
+              <span style="margin-left:8px;font-size:11px;color:var(--text-muted)" id="fpsInfo"></span>
+            </div>
+          </div>
+          <div class="video-wrap">
+            <video id="videoEl" autoplay muted playsinline></video>
+            <canvas id="faceCanvas"></canvas>
+            <div class="scan-line" id="scanLine"></div>
+            <div class="overlay-msg" id="overlayMsg">กด "เปิดกล้อง" เพื่อเริ่มต้น</div>
+            <div class="cam-placeholder" id="camPlaceholder">
+              <span>📷</span>
+              <span style="font-size:14px">กด "เปิดกล้อง" เพื่อเริ่มเช็คชื่อ</span>
+              <span style="font-size:12px;color:#444">ระบบต้องการสิทธิ์ใช้กล้อง</span>
+            </div>
+            <div class="model-overlay hidden" id="modelOverlay">
+              <div class="loading-spinner" style="width:32px;height:32px;border-width:3px"></div>
+              <div style="font-size:14px;font-weight:600;color:#fff">กำลังโหลด AI Model...</div>
+              <div class="model-bar"><div class="model-fill" id="modelFill" style="width:0%"></div></div>
+              <div style="font-size:12px;color:#888" id="modelStatusMsg">เตรียมพร้อม...</div>
+            </div>
+          </div>
+          <div class="cam-controls">
+            <button class="cbtn cbtn-primary" id="btnOpen" onclick="openCamera()">▶ เปิดกล้อง</button>
+            <button class="cbtn" id="btnClose" onclick="closeCamera()" disabled>⏹ ปิด</button>
+            <button class="cbtn" id="btnSnap" onclick="takeSnap()" disabled title="Snapshot">📸</button>
+            <button class="cbtn" id="btnFlip" onclick="flipCam()" disabled title="พลิกกล้อง">🔄</button>
+          </div>
+          <div class="ai-info-bar">
+            <span>🧠 face-api.js v1.7</span>
+            <span id="infoDescriptors">• 0 ใบหน้า</span>
+            <span id="infoDetect">• 0 detected</span>
+            <span id="infoThresh">• Threshold: 0.5</span>
+            <span id="infoMode"></span>
+          </div>
+        </div>
+
+        <!-- Status Panel -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="result-card" id="resultCard">
+            <div style="text-align:center;padding:16px;color:var(--text-muted)">
+              <div style="font-size:44px;opacity:.3;margin-bottom:10px">👤</div>
+              <div style="font-size:14px;font-weight:600">รอตรวจจับใบหน้า...</div>
+              <div style="font-size:12px;margin-top:4px">เข้าใกล้กล้องเพื่อเช็คชื่ออัตโนมัติ</div>
+            </div>
+          </div>
+          <div class="today-card">
+            <div class="today-head">
+              <span style="font-size:14px;font-weight:700">📋 เช็คชื่อวันนี้</span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <span class="badge badge-blue" id="todayBadge">0 คน</span>
+                <button class="btn-icon" style="width:28px;height:28px;font-size:12px" onclick="clearDisplay()" title="ล้าง">↺</button>
+              </div>
+            </div>
+            <div class="t-list" id="todayList">
+              <div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">ยังไม่มีการเช็คชื่อ</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Manual Panel -->
+      <div id="manualPanel" class="manual-panel">
+        <div class="card">
+          <div class="card-header">
+            <div><div class="card-title">✍️ เช็คชื่อ Manual</div><div class="card-subtitle">เลือกห้องและระบุสถานะแต่ละคน</div></div>
+            <button class="btn btn-primary" onclick="saveManual()">💾 บันทึก</button>
+          </div>
+          <div class="form-grid" style="margin-bottom:12px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">ชั้น</label>
+              <select class="form-select" id="mClass" onchange="loadManual()">
+                <option value="">-- ชั้น --</option>
+                <option>ม.1</option><option>ม.2</option><option>ม.3</option><option>ม.4</option><option>ม.5</option><option>ม.6</option>
+                <option>ป.1</option><option>ป.2</option><option>ป.3</option><option>ป.4</option><option>ป.5</option><option>ป.6</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">ห้อง</label>
+              <select class="form-select" id="mRoom" onchange="loadManual()">
+                <option value="">-- ห้อง --</option>
+                <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="allMark('present')">✅ มาทั้งหมด</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="allMark('absent')">❌ ขาดทั้งหมด</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="allMark('leave')">📝 ลาทั้งหมด</button>
+            <span id="manualSum" style="margin-left:auto;font-size:12px;color:var(--text-muted)"></span>
+          </div>
+          <div id="manualList">
+            <div style="text-align:center;padding:50px;color:var(--text-muted)">
+              <div style="font-size:36px;margin-bottom:12px">🏫</div>
+              <div>กรุณาเลือกชั้นและห้องเรียน</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="scripts/config.js"></script>
+<script src="scripts/auth.js"></script>
+<script>
+requireAuth();
+
+// ── State ─────────────────────────────────
+let allStudents = [], todayRecs = [];
+let cameraStream = null, detectLoop = null, demoLoop = null;
+let modelsLoaded = false, demoMode = false;
+let faceMatcher = null;
+let cooldowns = {};
+let fpsFrameCount = 0, fpsLastTime = Date.now();
+const COOLDOWN = CONFIG.DUPLICATE_CHECK_MINUTES * 60 * 1000;
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderSidebar('attendance');
+  renderTopbar('เช็คชื่อด้วยใบหน้า', 'Face Recognition Attendance');
+  allStudents = getStudents();
+  todayRecs = getTodayAttendance();
+  renderToday();
+  updateInfoBar();
+});
+
+// ── Mode ──────────────────────────────────
+function switchMode(m) {
+  document.getElementById('tabA').classList.toggle('active', m === 'auto');
+  document.getElementById('tabM').classList.toggle('active', m === 'manual');
+  document.getElementById('autoPanel').style.display = m === 'auto' ? '' : 'none';
+  document.getElementById('manualPanel').classList.toggle('show', m === 'manual');
+  if (m === 'manual' && cameraStream) closeCamera();
+}
+
+// ── Camera ────────────────────────────────
+async function openCamera() {
+  document.getElementById('btnOpen').disabled = true;
+  document.getElementById('camPlaceholder').style.display = 'none';
+
+  if (!modelsLoaded) {
+    document.getElementById('modelOverlay').classList.remove('hidden');
+    try {
+      await loadFaceModels();
+      modelsLoaded = true;
+    } catch (e) {
+      demoMode = true;
+      document.getElementById('infoMode').textContent = '• 🎭 Demo Mode';
+      showToast('ใช้ Demo Mode', 'face-api.js ไม่พร้อม — จำลองการทำงาน', 'warning');
+    }
+    document.getElementById('modelOverlay').classList.add('hidden');
+  }
+
+  try {
+    const video = document.getElementById('videoEl');
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { width:{ ideal:640 }, height:{ ideal:480 }, facingMode:'user' },
+      audio: false
+    });
+    video.srcObject = cameraStream;
+    await video.play();
+
+    setLiveStatus(true);
+
+    if (!demoMode) {
+      buildFaceMatcher();
+      startDetect();
+    } else {
+      startDemo();
+    }
+    showToast('เปิดกล้องสำเร็จ', 'ระบบพร้อมเช็คชื่อ', 'success');
+  } catch (e) {
+    document.getElementById('camPlaceholder').style.display = 'flex';
+    document.getElementById('btnOpen').disabled = false;
+    showToast('เปิดกล้องไม่ได้', e.name === 'NotAllowedError' ? 'กรุณาอนุญาตกล้อง' : e.message, 'error');
+  }
+}
+
+async function loadFaceModels() {
+  const url = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
+  const setP = (p, t) => {
+    document.getElementById('modelFill').style.width = p + '%';
+    document.getElementById('modelStatusMsg').textContent = t;
+  };
+  setP(5, 'โหลด SSD MobileNet...');
+  await faceapi.nets.ssdMobilenetv1.loadFromUri(url);
+  setP(40, 'โหลด Face Landmarks...');
+  await faceapi.nets.faceLandmark68Net.loadFromUri(url);
+  setP(75, 'โหลด Face Recognition...');
+  await faceapi.nets.faceRecognitionNet.loadFromUri(url);
+  setP(100, 'พร้อมใช้งาน!');
+  await new Promise(r => setTimeout(r, 400));
+}
+
+function buildFaceMatcher() {
+  const labeled = allStudents
+    .filter(s => Array.isArray(s.faceDescriptor) && s.faceDescriptor.length === 128)
+    .map(s => new faceapi.LabeledFaceDescriptors(s.id, [new Float32Array(s.faceDescriptor)]));
+  faceMatcher = labeled.length ? new faceapi.FaceMatcher(labeled, CONFIG.FACE_MATCH_THRESHOLD) : null;
+  document.getElementById('infoDescriptors').textContent = `• ${labeled.length} ใบหน้า`;
+  if (!labeled.length) showToast('ไม่มีข้อมูลใบหน้า', 'กรุณา Extract Face ในหน้านักเรียน', 'warning');
+}
+
+function startDetect() {
+  const video = document.getElementById('videoEl');
+  const canvas = document.getElementById('faceCanvas');
+  detectLoop = setInterval(async () => {
+    if (!cameraStream || !video.videoWidth) return;
+    try {
+      const dets = await faceapi
+        .detectAllFaces(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .withFaceLandmarks().withFaceDescriptors();
+      document.getElementById('infoDetect').textContent = `• ${dets.length} detected`;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      dets.forEach(det => {
+        const box = det.detection.box;
+        let matched = null;
+        if (faceMatcher) {
+          const m = faceMatcher.findBestMatch(det.descriptor);
+          if (m.label !== 'unknown') {
+            matched = { id: m.label, conf: Math.max(0, Math.min(100, (1 - m.distance) * 100)) };
+            processCheckIn(matched.id, matched.conf, 'face');
+          }
+        }
+        drawBox(ctx, box, matched);
+      });
+      countFPS();
+    } catch (e) { if (CONFIG.DEBUG) console.warn('detect error', e); }
+  }, 600);
+}
+
+function startDemo() {
+  let i = 0;
+  const pool = allStudents.slice(0, 6);
+  demoLoop = setInterval(() => {
+    if (Math.random() < 0.3 && pool.length) {
+      const s = pool[i++ % pool.length];
+      processCheckIn(s.id, 78 + Math.random() * 18, 'face');
+    }
+  }, 2800);
+  document.getElementById('overlayMsg').textContent = '🎭 Demo Mode — จำลองการตรวจจับ';
+}
+
+function drawBox(ctx, box, match) {
+  const color = match ? '#10b981' : '#ef4444';
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.shadowColor = color; ctx.shadowBlur = 6;
+  const c = Math.min(box.width, box.height) * 0.18;
+  const pts = [[box.x,box.y],[box.x+box.width,box.y],[box.x,box.y+box.height],[box.x+box.width,box.y+box.height]];
+  const dirs = [[c,0,0,c],[- c,0,0,c],[c,0,0,-c],[-c,0,0,-c]];
+  pts.forEach(([px,py],[dx1,dy1,dx2,dy2]) => {
+    if (!dirs[pts.indexOf([px,py])]) return;
+    const [d1x,d1y,d2x,d2y] = dirs[pts.indexOf([px,py])];
+    ctx.beginPath(); ctx.moveTo(px+d1x, py+d1y); ctx.lineTo(px,py); ctx.lineTo(px+d2x, py+d2y); ctx.stroke();
+  });
+  if (match) {
+    ctx.shadowBlur = 0; ctx.fillStyle = color; ctx.globalAlpha = 0.85;
+    const label = `${match.conf.toFixed(0)}%`;
+    ctx.font = 'bold 12px sans-serif';
+    const w = ctx.measureText(label).width + 12;
+    ctx.fillRect(box.x, box.y - 20, w, 18);
+    ctx.fillStyle = '#fff'; ctx.globalAlpha = 1;
+    ctx.fillText(label, box.x + 6, box.y - 5);
+  }
+}
+
+function closeCamera() {
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  clearInterval(detectLoop); clearInterval(demoLoop);
+  detectLoop = null; demoLoop = null;
+  const canvas = document.getElementById('faceCanvas');
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  setLiveStatus(false);
+  document.getElementById('camPlaceholder').style.display = 'flex';
+  document.getElementById('infoDetect').textContent = '• 0 detected';
+  document.getElementById('fpsInfo').textContent = '';
+  showToast('ปิดกล้องแล้ว', '', 'info');
+}
+
+function flipCam() {
+  // Re-open with environment camera
+  closeCamera();
+  setTimeout(() => openCamera(), 300);
+}
+
+function takeSnap() {
+  const video = document.getElementById('videoEl');
+  if (!video.videoWidth) return;
+  const c = document.createElement('canvas');
+  c.width = video.videoWidth; c.height = video.videoHeight;
+  c.getContext('2d').drawImage(video, 0, 0);
+  showToast('Snapshot บันทึกแล้ว', 'Unknown face logged', 'info');
+}
+
+function setLiveStatus(on) {
+  document.getElementById('liveDot').classList.toggle('on', on);
+  document.getElementById('liveText').textContent = on ? 'LIVE' : 'OFFLINE';
+  document.getElementById('scanLine').classList.toggle('on', on);
+  document.getElementById('btnOpen').disabled = on;
+  document.getElementById('btnClose').disabled = !on;
+  document.getElementById('btnSnap').disabled = !on;
+  document.getElementById('btnFlip').disabled = !on;
+  document.getElementById('overlayMsg').textContent = on ? 'มองกล้องเพื่อเช็คชื่ออัตโนมัติ' : 'กด "เปิดกล้อง" เพื่อเริ่มต้น';
+}
+
+function countFPS() {
+  fpsFrameCount++;
+  const now = Date.now();
+  if (now - fpsLastTime >= 2000) {
+    const fps = Math.round(fpsFrameCount * 1000 / (now - fpsLastTime));
+    fpsFrameCount = 0; fpsLastTime = now;
+    document.getElementById('fpsInfo').textContent = `${fps} fps`;
+  }
+}
+
+// ── Check-in Logic ────────────────────────────
+function processCheckIn(studentId, confidence, method) {
+  const now = Date.now();
+  if (cooldowns[studentId] && now - cooldowns[studentId] < COOLDOWN) {
+    const s = allStudents.find(st => st.id === studentId);
+    if (s) showDuplicateCard(s);
+    return;
+  }
+  cooldowns[studentId] = now;
+
+  const student = allStudents.find(s => s.id === studentId);
+  if (!student) return;
+
+  const nowDate = new Date();
+  const timeStr = nowDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = nowDate.toISOString().split('T')[0];
+  const [lh, lm] = CONFIG.LATE_TIME.split(':').map(Number);
+  const [ch, cm] = timeStr.split(':').map(Number);
+  const status = (ch > lh || (ch === lh && cm > lm)) ? 'late' : 'present';
+
+  const record = {
+    id: `A${Date.now()}`,
+    date: dateStr, time: timeStr,
+    studentId,
+    studentName: `${student.prefix}${student.firstName} ${student.lastName}`,
+    class: student.class, room: student.room,
+    status, method, deviceId: 'DEVICE-01', note: ''
+  };
+
+  const all = getAttendance();
+  all.push(record);
+  saveAttendance(all);
+  todayRecs.push(record);
+
+  showCheckInCard(student, status, confidence, timeStr);
+  renderToday();
+  speakName(student, status);
+  showToast(
+    `${student.prefix}${student.firstName} ${student.lastName}`,
+    `${STATUS_LABELS[status].label} · ${timeStr}`,
+    status === 'present' ? 'face' : 'warning'
+  );
+}
+
+function showCheckInCard(student, status, conf, time) {
+  const card = document.getElementById('resultCard');
+  const s = STATUS_LABELS[status];
+  const initials = `${student.firstName[0]}${student.lastName[0]}`;
+  const grad = {present:'linear-gradient(135deg,#10b981,#059669)',late:'linear-gradient(135deg,#f59e0b,#d97706)',absent:'linear-gradient(135deg,#ef4444,#dc2626)',leave:'linear-gradient(135deg,#3b82f6,#2563eb)'};
+  const cls = {present:'rc-success',late:'rc-late',absent:'',leave:'rc-success'};
+  card.className = `result-card ${cls[status]||''}`;
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="r-avatar" style="background:${grad[status]}">${initials}</div>
+      <div style="flex:1;min-width:0">
+        <div class="r-name">${student.prefix}${student.firstName} ${student.lastName}</div>
+        <div class="r-meta">ชั้น ${student.class}/${student.room} · เลขที่ ${student.no}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <span class="badge ${s.badge}">${s.icon} ${s.label}</span>
+      <span class="badge badge-gray">⏰ ${time}</span>
+      <span class="badge badge-purple">📷 Face</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+      <span style="font-size:12px;color:var(--text-muted);min-width:70px">ความแม่นยำ</span>
+      <div style="flex:1"><div class="progress-bar"><div class="progress-fill" style="width:${conf}%;background:${conf>80?'var(--accent)':conf>60?'var(--warning)':'var(--danger)'}"></div></div></div>
+      <span style="font-size:13px;font-weight:700;min-width:38px;text-align:right;color:${conf>80?'var(--accent)':conf>60?'var(--warning)':'var(--danger)'}">${conf.toFixed(0)}%</span>
+    </div>
+  `;
+}
+
+function showDuplicateCard(student) {
+  const card = document.getElementById('resultCard');
+  const last = todayRecs.filter(r => r.studentId === student.id).slice(-1)[0];
+  card.className = 'result-card rc-dup';
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="r-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706)">⏰</div>
+      <div>
+        <div class="r-name" style="font-size:15px">${student.prefix}${student.firstName} ${student.lastName}</div>
+        <div class="r-meta">เช็คชื่อแล้วเมื่อ ${last?.time || '—'}</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;padding:10px;background:rgba(245,158,11,.1);border-radius:8px;font-size:12px;color:var(--warning)">
+      ⚠️ Anti-duplicate: รอ ${CONFIG.DUPLICATE_CHECK_MINUTES} นาทีก่อนเช็คซ้ำ
+    </div>`;
+}
+
+function renderToday() {
+  const sorted = [...todayRecs].sort((a, b) => b.time.localeCompare(a.time));
+  document.getElementById('todayBadge').textContent = `${sorted.length} คน`;
+  const list = document.getElementById('todayList');
+  if (!sorted.length) { list.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">ยังไม่มีการเช็คชื่อ</div>'; return; }
+  list.innerHTML = sorted.slice(0, 30).map(r => {
+    const s = STATUS_LABELS[r.status];
+    return `<div class="t-row">
+      <span class="badge ${s.badge}" style="min-width:46px;justify-content:center;font-size:11px">${s.icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.studentName}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${r.class}/${r.room}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:12px;font-weight:600">${r.time}</div>
+        <div style="font-size:10px;color:var(--text-muted)">${r.method==='face'?'📷':'✍️'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function clearDisplay() {
+  document.getElementById('todayList').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">ล้างการแสดงผล (ข้อมูลยังอยู่)</div>';
+  document.getElementById('todayBadge').textContent = '0 คน';
+}
+
+function speakName(student, status) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const msg = status === 'present'
+    ? `ยินดีต้อนรับ ${student.prefix}${student.firstName} ชั้น ${student.class} ห้อง ${student.room}`
+    : `${student.prefix}${student.firstName} มาสาย`;
+  const u = new SpeechSynthesisUtterance(msg);
+  u.lang = 'th-TH'; u.rate = 0.95;
+  window.speechSynthesis.speak(u);
+}
+
+function updateInfoBar() {
+  const withFace = allStudents.filter(s => Array.isArray(s.faceDescriptor)).length;
+  document.getElementById('infoDescriptors').textContent = `• ${withFace} ใบหน้า`;
+  document.getElementById('infoThresh').textContent = `• Threshold: ${CONFIG.FACE_MATCH_THRESHOLD}`;
+}
+
+// ── Manual Mode ───────────────────────────────
+let mStatusMap = {};
+
+function loadManual() {
+  const cls = document.getElementById('mClass').value;
+  const room = document.getElementById('mRoom').value;
+  if (!cls || !room) return;
+  const list = allStudents.filter(s => s.class === cls && s.room === room).sort((a,b) => a.no-b.no);
+  mStatusMap = {};
+  list.forEach(s => mStatusMap[s.id] = 'present');
+  renderManualList(list);
+}
+
+function renderManualList(list) {
+  const wrap = document.getElementById('manualList');
+  if (!list.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">ไม่พบนักเรียน</div>'; return; }
+  wrap.innerHTML = list.map(s => `
+    <div class="s-row mp" id="sr-${s.id}">
+      <span style="font-size:12px;font-weight:700;color:var(--text-muted);min-width:24px;text-align:center">${s.no}</span>
+      <div style="flex:1;font-weight:600;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.prefix}${s.firstName} ${s.lastName}</div>
+      <div class="s-btns">
+        ${[['present','✅','มา','sp'],['late','⏰','สาย','sl'],['absent','❌','ขาด','sa'],['leave','📝','ลา','slv']].map(([st,ic,lb,cls]) =>
+          `<button class="s-mb ${st==='present'?cls:''}" id="sb-${s.id}-${st}" onclick="setMStatus('${s.id}','${st}')">${ic} ${lb}</button>`
+        ).join('')}
+      </div>
+    </div>`).join('');
+  updateSum();
+}
+
+function setMStatus(id, status) {
+  mStatusMap[id] = status;
+  const clsMap = {present:'mp',late:'ml',absent:'ma',leave:'mlv'};
+  const row = document.getElementById(`sr-${id}`);
+  row.className = `s-row ${clsMap[status]}`;
+  const bCls = {present:'sp',late:'sl',absent:'sa',leave:'slv'};
+  ['present','late','absent','leave'].forEach(st => {
+    const b = document.getElementById(`sb-${id}-${st}`);
+    if (b) b.className = `s-mb ${st===status?bCls[st]:''}`;
+  });
+  updateSum();
+}
+
+function allMark(status) { Object.keys(mStatusMap).forEach(id => setMStatus(id, status)); }
+
+function updateSum() {
+  const c = {present:0,late:0,absent:0,leave:0};
+  Object.values(mStatusMap).forEach(s => c[s]++);
+  const total = Object.keys(mStatusMap).length;
+  document.getElementById('manualSum').textContent = total
+    ? `รวม ${total} คน | ✅${c.present} ⏰${c.late} ❌${c.absent} 📝${c.leave}` : '';
+}
+
+function saveManual() {
+  const cls = document.getElementById('mClass').value;
+  const room = document.getElementById('mRoom').value;
+  if (!cls || !room) { showToast('เลือกห้องเรียนก่อน','','warning'); return; }
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0];
+  const timeStr = now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+  const all = getAttendance();
+  let count = 0;
+  Object.entries(mStatusMap).forEach(([id, status]) => {
+    const s = allStudents.find(st => st.id === id);
+    if (!s) return;
+    const i = all.findIndex(r => r.studentId===id && r.date===dateStr);
+    if (i>=0) all.splice(i,1);
+    all.push({ id:`M${Date.now()}${id}`, date:dateStr, time:timeStr, studentId:id,
+      studentName:`${s.prefix}${s.firstName} ${s.lastName}`, class:cls, room,
+      status, method:'manual', deviceId:'MANUAL', note:'' });
+    count++;
+  });
+  saveAttendance(all);
+  todayRecs = getTodayAttendance();
+  showToast('บันทึกสำเร็จ',`เช็คชื่อ ${count} คน · ชั้น ${cls}/${room}`,'success');
+  if (window.speechSynthesis) {
+    const u = new SpeechSynthesisUtterance(`บันทึกการเช็คชื่อชั้น ${cls} ห้อง ${room} เรียบร้อยแล้ว`);
+    u.lang = 'th-TH'; window.speechSynthesis.speak(u);
+  }
+}
+</script>
+</body>
+</html>
