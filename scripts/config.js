@@ -4,14 +4,14 @@
 
 const CONFIG = {
   // Google Apps Script URL (แทนที่ด้วย URL จริงเมื่อ deploy)
-  API_URL: 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbzlkPfdlqyE3k7c5PvWTlwhc4tXxyYU9WZaWSSqrupk-w-OFk41s9e27RVchRQYqday/exec',
 
   // Google OAuth (แทนที่ด้วย Client ID จริง)
-  GOOGLE_CLIENT_ID: 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+  GOOGLE_CLIENT_ID: '927009801291-kevld3oikvb61borggjd1uul8mbhmkvk.apps.googleusercontent.com',
 
   // School Settings
-  SCHOOL_NAME: 'โรงเรียนสาธิตมหาวิทยาลัย',
-  SCHOOL_SHORT: 'ร.ร.สาธิต',
+  SCHOOL_NAME: 'โรงเรียนบ้านใหม่',
+  SCHOOL_SHORT: 'ร.ร.บ้านใหม่',
 
   // Face Recognition Settings
   FACE_MATCH_THRESHOLD: 0.5,
