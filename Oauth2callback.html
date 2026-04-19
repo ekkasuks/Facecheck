@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Google Login — กำลังดำเนินการ...</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Sarabun', sans-serif;
+    background: #0f0f23;
+    color: #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+    text-align: center;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid rgba(255,255,255,.1);
+    border-top-color: #4f46e5;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .title { font-size: 16px; font-weight: 600; }
+  .sub   { font-size: 13px; color: #64748b; }
+  .error-box {
+    background: rgba(239,68,68,.1);
+    border: 1px solid rgba(239,68,68,.3);
+    color: #fca5a5;
+    padding: 14px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    display: none;
+    max-width: 360px;
+  }
+</style>
+</head>
+<body>
+  <div class="spinner" id="spinner"></div>
+  <div class="title" id="statusTitle">กำลังยืนยันตัวตน...</div>
+  <div class="sub" id="statusSub">กรุณารอสักครู่</div>
+  <div class="error-box" id="errorBox"></div>
+
+<script>
+// ════════════════════════════════════════════
+// oauth2callback.html
+// ไฟล์นี้เป็น Redirect URI สำหรับ Google OAuth popup
+// Google จะ redirect มาที่นี่พร้อม token ใน URL hash
+// แล้วหน้านี้จะ postMessage กลับไปที่ index.html
+// ════════════════════════════════════════════
+
+(function() {
+  function setStatus(title, sub, isError) {
+    document.getElementById('statusTitle').textContent = title;
+    document.getElementById('statusSub').textContent   = sub;
+    if (isError) {
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('errorBox').style.display = 'block';
+      document.getElementById('errorBox').textContent  = sub;
+    }
+  }
+
+  function decodeJWT(token) {
+    try {
+      const base64Url = token.split('.')[1];
+      const base64    = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonStr   = decodeURIComponent(
+        atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+      );
+      return JSON.parse(jsonStr);
+    } catch(e) {
+      return null;
+    }
+  }
+
+  // ── อ่าน token จาก URL hash ─────────────────
+  // Google จะ redirect มาในรูปแบบ:
+  // oauth2callback.html#access_token=...&id_token=...&token_type=Bearer
+  const hash   = window.location.hash.slice(1);
+  const params = new URLSearchParams(hash);
+
+  const idToken     = params.get('id_token');
+  const accessToken = params.get('access_token');
+  const error       = params.get('error');
+
+  if (error) {
+    setStatus('Login ล้มเหลว', error, true);
+    if (window.opener) {
+      window.opener.postMessage({ type:'GOOGLE_OAUTH_ERROR', error }, window.location.origin);
+    }
+    setTimeout(() => window.close(), 3000);
+    return;
+  }
+
+  if (idToken) {
+    setStatus('ได้รับข้อมูลแล้ว...', 'กำลังตรวจสอบ');
+
+    const payload = decodeJWT(idToken);
+    if (!payload) {
+      setStatus('เกิดข้อผิดพลาด', 'ไม่สามารถถอดรหัส token ได้', true);
+      return;
+    }
+
+    setStatus('ยืนยันสำเร็จ!', `ยินดีต้อนรับ ${payload.name || payload.email}`);
+
+    // ส่งกลับไปที่ opener (index.html)
+    if (window.opener) {
+      window.opener.postMessage({
+        type:       'GOOGLE_OAUTH_SUCCESS',
+        id_token:   idToken,
+        credential: idToken,
+        userInfo:   payload,
+      }, window.location.origin);
+    }
+
+    setTimeout(() => window.close(), 1200);
+    return;
+  }
+
+  if (accessToken) {
+    // กรณีได้แค่ access_token → ดึง userinfo จาก Google API
+    setStatus('ดึงข้อมูลผู้ใช้...', 'กำลังติดต่อ Google');
+
+    fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { 'Authorization': 'Bearer ' + accessToken }
+    })
+    .then(r => r.json())
+    .then(userInfo => {
+      setStatus('ยืนยันสำเร็จ!', `ยินดีต้อนรับ ${userInfo.name || userInfo.email}`);
+      if (window.opener) {
+        window.opener.postMessage({
+          type:     'GOOGLE_OAUTH_SUCCESS',
+          userInfo,
+          credential: null,
+        }, window.location.origin);
+      }
+      setTimeout(() => window.close(), 1200);
+    })
+    .catch(err => {
+      setStatus('ดึงข้อมูลไม่สำเร็จ', err.message, true);
+      if (window.opener) {
+        window.opener.postMessage({ type:'GOOGLE_OAUTH_ERROR', error: err.message }, window.location.origin);
+      }
+    });
+    return;
+  }
+
+  // ไม่มี token เลย — อาจเป็นการโหลดตรง
+  if (!hash || hash.length < 10) {
+    setStatus('หน้านี้ใช้สำหรับ OAuth เท่านั้น', 'กรุณาเข้าสู่ระบบผ่าน index.html');
+    setTimeout(() => {
+      window.location.href = 'index.html';
+    }, 2000);
+  }
+
+})();
+</script>
+</body>
+</html>
