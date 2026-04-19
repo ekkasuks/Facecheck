@@ -9,7 +9,7 @@ const CONFIG = {
   //  ★ ใส่ URL Apps Script ของคุณตรงนี้ ★
   //  ได้จาก: Apps Script → Deploy → Web App URL
   // ══════════════════════════════════════════
-  API_URL: 'https://script.google.com/macros/s/AKfycbzlkPfdlqyE3k7c5PvWTlwhc4tXxyYU9WZaWSSqrupk-w-OFk41s9e27RVchRQYqday/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbxxqJKga6G1qeLmmp1jzzrZJt2ait7iORBiSXyY95svcKJFCqYnH8RBRyRS1L58JnQk/exec',
   //        ↑ แก้ตรงนี้ — ลบ YOUR_SCRIPT_ID แล้วใส่ ID จริง
 
   // School
