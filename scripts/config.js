@@ -9,7 +9,7 @@ const CONFIG = {
   //  ★ 1) Google Apps Script URL ★
   //  ได้จาก: Apps Script → Deploy → Web App → Copy URL
   // ══════════════════════════════════════════
-  API_URL: 'https://script.google.com/macros/s/AKfycbzMS1_ldP1CkwXhgE6uCCNUfuALYzzc3PBIEmA2vyW8xEp0gh23si_CkVN4Slg72yTg/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbzNj9RBy-O4jh0pVklkgtBwrJPZiAo4P-jBR3KabdUDkw3Dlq_JlV3AkQAE6bfjCnAD/exec',
   //        ↑ แก้ตรงนี้
 
   // ══════════════════════════════════════════
