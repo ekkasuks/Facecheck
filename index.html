@@ -177,6 +177,16 @@
   </div>
 </div>
 
+<!-- Role Debugger — แสดงเมื่อ ?debug=1 ใน URL -->
+<div id="roleDebugPanel" style="display:none;position:fixed;bottom:16px;left:16px;z-index:999;background:var(--bg-card);border:1px solid var(--border-strong);border-radius:12px;padding:16px;max-width:340px;font-size:12px;box-shadow:var(--shadow)">
+  <div style="font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+    🔍 Role Debugger <button onclick="document.getElementById('roleDebugPanel').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--text-muted)">✕</button>
+  </div>
+  <div style="color:var(--text-muted);margin-bottom:8px">ROLE_MAP ที่ตั้งค่าใน config.js:</div>
+  <div id="debugRoleMapList" style="font-family:monospace;font-size:11px;line-height:1.8;background:var(--bg-card2);padding:10px;border-radius:8px;max-height:160px;overflow-y:auto"></div>
+  <div style="margin-top:10px;color:var(--text-muted)">วิธีใช้: ดู Gmail ของตัวเองแล้วเพิ่มใน config.js</div>
+</div>
+
 <script src="scripts/config.js"></script>
 <script>
 // ════════════════════════════════════════════
@@ -374,13 +384,23 @@ function processGoogleToken(jwtToken, preDecoded) {
 
 // ── กำหนด Role จาก Email ──
 function resolveRole(email) {
-  // ตั้งค่า role mapping ใน config.js → CONFIG.ROLE_MAP
   const roleMap = CONFIG.ROLE_MAP || {};
-  if (roleMap[email]) return roleMap[email];
 
-  // Default: ถ้าไม่ได้ระบุใน map → teacher
-  // Admin email ต้องระบุชัดเจนใน ROLE_MAP
-  return 'teacher';
+  // normalize — lowercase + trim ป้องกัน typo ใน config
+  const norm = (email || '').trim().toLowerCase();
+
+  // ค้นหาแบบ case-insensitive
+  for (const [mapEmail, role] of Object.entries(roleMap)) {
+    if (mapEmail.trim().toLowerCase() === norm) {
+      console.log('[Role] ' + email + ' → ' + role + ' (matched "' + mapEmail + '")');
+      return role;
+    }
+  }
+
+  // log ชัดเจนเมื่อไม่เจอ — ดูใน Console เพื่อ debug
+  console.warn('[Role] "' + email + '" ไม่พบใน ROLE_MAP → role: viewer');
+  console.warn('[Role] ROLE_MAP ปัจจุบัน:', JSON.stringify(roleMap));
+  return 'viewer';   // default ปลอดภัย = viewer
 }
 
 // ════════════════════════════════════════════
@@ -506,11 +526,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('schoolNameDisplay').textContent = CONFIG.SCHOOL_SHORT;
   }
 
-  // Init Google OAuth (รอ GSI library โหลดเสร็จ)
+  // Init Google OAuth
   if (typeof google !== 'undefined' && google.accounts) {
     initGoogleOAuth();
   } else {
-    // GSI ยังโหลดไม่เสร็จ → รอ
     window.addEventListener('load', () => setTimeout(initGoogleOAuth, 300));
   }
 
@@ -519,10 +538,37 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') doEmailLogin();
   });
 
-  // ตรวจ redirect จาก oauth2callback.html (Hash params)
+  // Hash token (redirect จาก oauth2callback.html)
   const hash = window.location.hash;
   if (hash.includes('id_token=') || hash.includes('access_token=')) {
     handleHashToken(hash);
+  }
+
+  // ── Role Debugger (เปิดด้วย ?debug=1) ──
+  if (window.location.search.includes('debug=1')) {
+    const panel = document.getElementById('roleDebugPanel');
+    panel.style.display = 'block';
+    const roleMap = CONFIG.ROLE_MAP || {};
+    const entries = Object.entries(roleMap);
+    const listEl  = document.getElementById('debugRoleMapList');
+    if (entries.length === 0) {
+      listEl.innerHTML = '<span style="color:var(--danger)">⚠️ ROLE_MAP ว่างเปล่า!</span>';
+    } else {
+      listEl.innerHTML = entries.map(([email, role]) => {
+        const colors = { admin:'#10b981', teacher:'#3b82f6', viewer:'#94a3b8' };
+        return `<div><span style="color:${colors[role]||'#fff'};font-weight:700">[${role}]</span> ${email}</div>`;
+      }).join('');
+    }
+    // แสดง email จาก session ถ้ามี
+    const u = sessionStorage.getItem('user');
+    if (u) {
+      const user = JSON.parse(u);
+      const resolvedRole = resolveRole(user.email);
+      listEl.innerHTML += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+        <span style="color:var(--warning)">⚡ Email ล่าสุด:</span> ${user.email}<br>
+        <span style="color:var(--warning)">⚡ Role ที่ได้:</span> ${resolvedRole}
+      </div>`;
+    }
   }
 });
 
