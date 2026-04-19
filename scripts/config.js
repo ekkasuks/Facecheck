@@ -6,11 +6,42 @@
 const CONFIG = {
 
   // ══════════════════════════════════════════
-  //  ★ ใส่ URL Apps Script ของคุณตรงนี้ ★
-  //  ได้จาก: Apps Script → Deploy → Web App URL
+  //  ★ 1) Google Apps Script URL ★
+  //  ได้จาก: Apps Script → Deploy → Web App → Copy URL
   // ══════════════════════════════════════════
   API_URL: 'https://script.google.com/macros/s/AKfycbxxqJKga6G1qeLmmp1jzzrZJt2ait7iORBiSXyY95svcKJFCqYnH8RBRyRS1L58JnQk/exec',
-  //        ↑ แก้ตรงนี้ — ลบ YOUR_SCRIPT_ID แล้วใส่ ID จริง
+  //        ↑ แก้ตรงนี้
+
+  // ══════════════════════════════════════════
+  //  ★ 2) Google OAuth 2.0 Client ID ★
+  //  วิธีสร้าง:
+  //  1. ไปที่ https://console.cloud.google.com/
+  //  2. APIs & Services → Credentials
+  //  3. + CREATE CREDENTIALS → OAuth client ID
+  //  4. Application type: Web application
+  //  5. Authorized JavaScript origins:
+  //     - http://localhost (สำหรับทดสอบ)
+  //     - https://YOUR_USERNAME.github.io (สำหรับ production)
+  //  6. คัดลอก Client ID มาวางที่นี่
+  // ══════════════════════════════════════════
+  GOOGLE_CLIENT_ID: '927009801291-kevld3oikvb61borggjd1uul8mbhmkvk.apps.googleusercontent.com',
+  //                 ↑ แก้ตรงนี้ — รูปแบบ: xxxxxxx.apps.googleusercontent.com
+
+  // ══════════════════════════════════════════
+  //  ★ 3) Role Mapping — ระบุว่า Email ไหน = Role อะไร ★
+  //  Admin: เพิ่ม/แก้ไข/ลบข้อมูลทุกอย่าง
+  //  Teacher: เช็คชื่อ + ดูรายงานห้องตัวเอง
+  //  Viewer: ดู Dashboard อย่างเดียว
+  // ══════════════════════════════════════════
+  ROLE_MAP: {
+    'admin@school.ac.th':        'admin',
+    'ekasak@school.ac.th':       'admin',    // ← ใส่ Gmail ของอาจารย์เอกศักดิ์
+    'teacher@school.ac.th':      'teacher',
+    // เพิ่ม email ครูคนอื่นๆ ที่นี่:
+    // 'somjai@school.ac.th':    'teacher',
+    // 'parent@gmail.com':       'viewer',
+  },
+  // หมายเหตุ: email ที่ไม่ได้ระบุใน ROLE_MAP จะได้ role = 'teacher' อัตโนมัติ
 
   // School
   SCHOOL_NAME:  'โรงเรียนบ้านใหม่',
@@ -29,7 +60,8 @@ const CONFIG = {
 };
 
 // ── ตรวจว่า API_URL ตั้งค่าแล้วหรือยัง ──────
-CONFIG._hasRealAPI = !CONFIG.API_URL.includes('YOUR_SCRIPT');
+CONFIG._hasRealAPI    = !CONFIG.API_URL.includes('YOUR_SCRIPT');
+CONFIG._hasGoogleAuth = !CONFIG.GOOGLE_CLIENT_ID.includes('YOUR_CLIENT_ID');
 
 if (!CONFIG._hasRealAPI) {
   console.warn(
