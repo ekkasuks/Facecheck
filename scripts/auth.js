@@ -1,60 +1,114 @@
 // ============================================
 // auth.js — Authentication & Shared Utils
+// (PATCHED: ใช้ Google Apps Script login เพื่อรับ token)
 // ============================================
 
 // ── Auth ────────────────────────────────────
 const DEMO_ACCOUNTS = {
-  admin: { email: 'admin@school.ac.th', password: 'admin1234', role: 'admin', name: 'อาจารย์เอกศักดิ์ ปรีติประสงค์' },
+  admin:   { email: 'admin@school.ac.th',   password: 'admin1234',   role: 'admin',   name: 'ผู้ดูแลระบบ' },
   teacher: { email: 'teacher@school.ac.th', password: 'teacher1234', role: 'teacher', name: 'อาจารย์สมใจ ดีงาม' },
-  viewer: { email: 'viewer@school.ac.th', password: 'viewer1234', role: 'viewer', name: 'ผู้ปกครอง ทดสอบ' }
+  viewer:  { email: 'viewer@school.ac.th',  password: 'viewer1234',  role: 'viewer',  name: 'ผู้ปกครอง ทดสอบ' }
 };
 
 function getCurrentUser() {
-  const u = sessionStorage.getItem('user');
-  return u ? JSON.parse(u) : null;
+  try {
+    const u = sessionStorage.getItem('user');
+    return u ? JSON.parse(u) : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function requireAuth() {
-  if (!getCurrentUser()) {
+  const user = getCurrentUser();
+  if (!user || !user.token) {
+    sessionStorage.removeItem('user');
     window.location.href = 'index.html';
     return false;
   }
   return true;
 }
 
-function doLogin() {
-  const email = document.getElementById('emailInput').value.trim();
+// ── Login (ใช้ GAS จริง) ─────────────────────
+async function doLogin() {
+  const email    = document.getElementById('emailInput').value.trim();
   const password = document.getElementById('passwordInput').value;
-  const btn = document.getElementById('loginBtnText');
+  const btn      = document.getElementById('loginBtnText');
+  const errEl    = document.getElementById('errorMsg');
+
+  if (errEl) errEl.classList.remove('show');
+
+  if (!email || !password) {
+    if (errEl) errEl.classList.add('show');
+    return;
+  }
 
   btn.textContent = 'กำลังตรวจสอบ...';
 
-  setTimeout(() => {
-    const found = Object.values(DEMO_ACCOUNTS).find(a => a.email === email && a.password === password);
-    if (found) {
-      sessionStorage.setItem('user', JSON.stringify(found));
-      window.location.href = 'dashboard.html';
-    } else {
-      const errEl = document.getElementById('errorMsg');
-      errEl.classList.add('show');
-      btn.textContent = '🔐 เข้าสู่ระบบ';
-      setTimeout(() => errEl.classList.remove('show'), 3000);
+  try {
+    // ยิงไปที่ Google Apps Script
+    const res = await fetch(CONFIG.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'login',
+        email,
+        password
+      }),
+      mode: 'cors'
+    });
+
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    const json = await res.json();
+
+    if (!json.success) {
+      throw new Error(json.error || 'เข้าสู่ระบบไม่สำเร็จ');
     }
-  }, 800);
+
+    const userData = json.data || {};
+
+    // ต้องมี token
+    if (!userData.token) {
+      throw new Error('ระบบไม่ได้ส่ง token กลับมา');
+    }
+
+    // เก็บ session
+    sessionStorage.setItem('user', JSON.stringify({
+      email: userData.email || email,
+      name:  userData.name  || 'ผู้ใช้งาน',
+      role:  userData.role  || 'viewer',
+      rooms: userData.rooms || '',
+      token: userData.token
+    }));
+
+    btn.textContent = '✅ สำเร็จ';
+    window.location.href = 'dashboard.html';
+
+  } catch (err) {
+    console.error('[Auth] Login failed:', err.message);
+
+    btn.textContent = '🔐 เข้าสู่ระบบ';
+    if (errEl) errEl.classList.add('show');
+
+    showToast('เข้าสู่ระบบไม่สำเร็จ', err.message, 'error', 3500);
+  }
 }
 
-function loginGoogle() {
-  const mockUser = { email: 'admin@school.ac.th', name: 'อาจารย์เอกศักดิ์ ปรีติประสงค์', role: 'admin' };
-  sessionStorage.setItem('user', JSON.stringify(mockUser));
-  window.location.href = 'dashboard.html';
-}
-
+// ── Demo fill ────────────────────────────────
 function fillDemo(role) {
   const acc = DEMO_ACCOUNTS[role];
+  if (!acc) return;
   document.getElementById('emailInput').value = acc.email;
   document.getElementById('passwordInput').value = acc.password;
 }
 
+// ── Google login (ตอนนี้เป็น mock แต่สร้าง token จาก GAS ไม่ได้) ──
+function loginGoogle() {
+  showToast('ยังไม่เปิดใช้ Google Login', 'ตอนนี้ใช้ระบบ login ผ่าน email/password ก่อน', 'warning', 4000);
+}
+
+// ── Logout ───────────────────────────────────
 function doLogout() {
   sessionStorage.removeItem('user');
   window.location.href = 'index.html';
@@ -133,7 +187,7 @@ function renderSidebar(activePage) {
     { icon: '⚙️', label: 'ตั้งค่า', href: 'settings.html', page: 'settings' },
   ];
 
-  const initials = user.name.split(' ').map(n => n[0]).join('').slice(0, 2);
+  const initials = (user.name || 'U').split(' ').map(n => n[0]).join('').slice(0, 2);
 
   const html = `
     <div class="sidebar-brand">
@@ -156,7 +210,7 @@ function renderSidebar(activePage) {
       <div class="user-profile" onclick="doLogout()">
         <div class="user-avatar avatar-initials">${initials}</div>
         <div>
-          <div class="user-name">${user.name.replace('อาจารย์','อ.')}</div>
+          <div class="user-name">${(user.name || '').replace('อาจารย์','อ.')}</div>
           <div class="user-role">${ROLE_LABELS[user.role]?.label || user.role} · ออกจากระบบ</div>
         </div>
       </div>
@@ -186,7 +240,6 @@ function renderTopbar(title, subtitle = '') {
     <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
   `;
 
-  // Update clock
   setInterval(() => {
     const now = new Date();
     const el = document.getElementById('topbarClock');
@@ -209,27 +262,6 @@ function fmt(n, decimals = 1) {
 function fmtPercent(num, total) {
   if (!total) return '0%';
   return `${((num / total) * 100).toFixed(1)}%`;
-}
-
-// ── Date utils ────────────────────────────────
-function getDateRange(type) {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (type === 'today') {
-    return { start: today, end: today };
-  }
-  if (type === 'week') {
-    const mon = new Date(today);
-    mon.setDate(today.getDate() - today.getDay() + 1);
-    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-    return { start: mon, end: sun };
-  }
-  if (type === 'month') {
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    return { start, end };
-  }
-  return { start: today, end: today };
 }
 
 // ── Confirm dialog ────────────────────────────
@@ -258,20 +290,22 @@ function confirm(title, message, onConfirm) {
 // Init on page load
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
-  // Add toast container
+
   if (!document.getElementById('toast-container')) {
     const tc = document.createElement('div');
     tc.id = 'toast-container';
     document.body.appendChild(tc);
   }
-  // Mobile menu button
+
   if (window.innerWidth <= 768) {
     const menuBtn = document.getElementById('menuBtn');
     if (menuBtn) menuBtn.style.display = 'flex';
   }
-});
 
-// Enter key login
-if (document.getElementById('passwordInput')) {
-  document.addEventListener('keypress', e => { if (e.key === 'Enter') doLogin(); });
-}
+  // Enter key login
+  if (document.getElementById('passwordInput')) {
+    document.addEventListener('keypress', e => {
+      if (e.key === 'Enter') doLogin();
+    });
+  }
+});
