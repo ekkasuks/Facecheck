@@ -1,409 +1,459 @@
 // ============================================
-// Google Apps Script — FaceAttend API
-// วางโค้ดนี้ใน Google Apps Script แล้ว Deploy เป็น Web App
+// Google Apps Script — FaceAttend API v2.2
+// แก้ไข: e อาจเป็น undefined ตอนรัน setupSheets
 // ============================================
 
-const SHEET_ID = 'YOUR_GOOGLE_SHEET_ID'; // ← แทนที่ด้วย Sheet ID จริง
-const DRIVE_FOLDER_ID = 'YOUR_DRIVE_FOLDER_ID'; // ← แทนที่ด้วย Folder ID จริง
-const SECRET_KEY = 'YOUR_SECRET_KEY_HERE'; // ← กำหนด secret key
+// ─── ตั้งค่าตรงนี้ก่อน ──────────────────────
+const SHEET_ID        = '17juO5S8dVehwyUdnhO99HLs8ef3rjfF37viRwwwapbc';  // ← วาง Sheet ID ของคุณ
+const DRIVE_FOLDER_ID = '1aMxUNPLCAIwj5aMFDBKKd0jaHQ4-ZzRB';  // ← วาง Drive Folder ID
+const SECRET_KEY      = 'FaceAttend2024Secret';  // ← เปลี่ยนได้ตามต้องการ
+// ────────────────────────────────────────────
 
-// Sheet names
 const SHEETS = {
-  STUDENTS: 'Students',
+  STUDENTS:   'Students',
   ATTENDANCE: 'Attendance',
-  USERS: 'Users',
-  SETTINGS: 'Settings',
-  AUDIT: 'AuditLog'
+  USERS:      'Users',
+  SETTINGS:   'Settings',
+  AUDIT:      'AuditLog'
 };
 
-// ── Main Handler ─────────────────────────────────────────────
+// ════════════════════════════════════════════
+// HTTP Entry Points
+// NOTE: Guard ทุกบรรทัดที่ใช้ e เพราะเมื่อรัน
+//       จาก Script Editor  e จะเป็น undefined
+// ════════════════════════════════════════════
+
 function doGet(e) {
-  return handleRequest(e, 'GET');
+  try {
+    const params = (e && e.parameter) ? e.parameter : {};
+    return handleRequest(params);
+  } catch (err) {
+    return respond({ success: false, error: err.message });
+  }
 }
 
 function doPost(e) {
-  return handleRequest(e, 'POST');
+  try {
+    let params = {};
+    if (e && e.postData && e.postData.contents) {
+      params = JSON.parse(e.postData.contents);
+    }
+    return handleRequest(params);
+  } catch (err) {
+    return respond({ success: false, error: err.message });
+  }
 }
 
-function handleRequest(e, method) {
-  // CORS headers
-  const output = ContentService.createTextOutput();
-  output.setMimeType(ContentService.MimeType.JSON);
-
+function handleRequest(params) {
   try {
-    const params = method === 'GET' ? e.parameter : JSON.parse(e.postData.contents || '{}');
-    const action = params.action || e.parameter?.action || '';
-    const token = params.token || '';
+    if (!params) params = {};
+    const action = params.action ? String(params.action) : '';
+    const token  = params.token  ? String(params.token)  : '';
 
-    // Public endpoints (no auth needed)
-    const publicActions = ['login', 'ping'];
-    if (!publicActions.includes(action)) {
-      const authResult = verifyToken(token);
-      if (!authResult.valid) {
-        return respond({ success: false, error: 'Unauthorized', code: 401 });
+    const PUBLIC_ACTIONS = ['ping', 'login'];
+    if (!PUBLIC_ACTIONS.includes(action)) {
+      const auth = verifyToken(token);
+      if (!auth.valid) {
+        return respond({ success: false, error: 'Unauthorized: ' + (auth.error || ''), code: 401 });
       }
     }
 
     let result;
     switch (action) {
-      case 'ping': result = { pong: true, version: '2.1.0', time: new Date().toISOString() }; break;
-      case 'login': result = handleLogin(params); break;
+      case 'ping':    result = doPing();               break;
+      case 'login':   result = doLogin(params);        break;
 
-      // Students
-      case 'getStudents': result = getStudents(params); break;
-      case 'addStudent': result = addStudent(params); break;
-      case 'updateStudent': result = updateStudent(params); break;
-      case 'deleteStudent': result = deleteStudent(params); break;
+      case 'getStudents':    result = doGetStudents(params);    break;
+      case 'addStudent':     result = doAddStudent(params);     break;
+      case 'updateStudent':  result = doUpdateStudent(params);  break;
+      case 'deleteStudent':  result = doDeleteStudent(params);  break;
 
-      // Attendance
-      case 'checkAttendance': result = checkAttendance(params); break;
-      case 'getAttendance': result = getAttendance(params); break;
-      case 'updateAttendanceStatus': result = updateAttendanceStatus(params); break;
+      case 'checkAttendance':        result = doCheckAttendance(params);        break;
+      case 'getAttendance':          result = doGetAttendance(params);          break;
+      case 'updateAttendanceStatus': result = doUpdateAttendanceStatus(params); break;
 
-      // Dashboard
-      case 'getDashboard': result = getDashboard(params); break;
-      case 'getClassSummary': result = getClassSummary(params); break;
+      case 'getDashboard':   result = doGetDashboard(params);   break;
+      case 'getClassSummary':result = doGetClassSummary(params);break;
 
-      // Face Image
-      case 'uploadFaceImage': result = uploadFaceImage(params); break;
-      case 'saveFaceDescriptor': result = saveFaceDescriptor(params); break;
+      case 'uploadFaceImage':    result = doUploadFaceImage(params);    break;
+      case 'saveFaceDescriptor': result = doSaveFaceDescriptor(params); break;
 
-      // Settings
-      case 'getSettings': result = getSchoolSettings(); break;
-      case 'saveSettings': result = saveSchoolSettings(params); break;
+      case 'getSettings':  result = doGetSettings();       break;
+      case 'saveSetting':  result = doSaveSetting(params); break;
 
-      default: result = { error: 'Unknown action: ' + action };
+      default:
+        return respond({ success: false, error: 'Unknown action: "' + action + '"' });
     }
-
     return respond({ success: true, data: result });
 
   } catch (err) {
-    logAudit('ERROR', 'system', err.message);
-    return respond({ success: false, error: err.message, stack: err.stack });
+    safeLog('ERROR', 'handleRequest', err.message);
+    return respond({ success: false, error: err.message });
   }
 }
 
-function respond(data) {
-  const json = JSON.stringify(data);
-  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+function respond(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ── Auth ─────────────────────────────────────────────────────
-function handleLogin(params) {
-  const { email, password } = params;
-  const sheet = getSheet(SHEETS.USERS);
-  const rows = sheet.getDataRange().getValues();
+// ════════════════════════════════════════════
+// Auth
+// ════════════════════════════════════════════
 
+function doPing() {
+  return { pong: true, version: '2.2.0', time: new Date().toISOString() };
+}
+
+function doLogin(p) {
+  const email    = String(p.email    || '').trim();
+  const password = String(p.password || '');
+  if (!email || !password) throw new Error('ต้องระบุ email และ password');
+
+  const sheet = openSheet(SHEETS.USERS);
+  const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    const [userEmail, name, role, rooms, hash] = rows[i];
-    if (userEmail === email) {
-      const passwordHash = Utilities.computeDigest(
-        Utilities.DigestAlgorithm.SHA_256,
-        password + SECRET_KEY
-      ).map(b => (b + 256).toString(16).slice(-2)).join('');
-
-      if (passwordHash === hash) {
-        const token = Utilities.base64Encode(
-          JSON.stringify({ email, role, exp: Date.now() + 86400000 })
-        );
-        logAudit('LOGIN', email, `Login success — role: ${role}`);
-        return { token, email, name, role, rooms };
-      }
+    const uEmail = String(rows[i][0]).trim().toLowerCase();
+    const uHash  = String(rows[i][4]).trim();
+    if (uEmail === email.toLowerCase() && hashPwd(password) === uHash) {
+      const token = buildToken(email, rows[i][2]);
+      safeLog('LOGIN', email, 'role=' + rows[i][2]);
+      return { token, email: rows[i][0], name: rows[i][1], role: rows[i][2], rooms: rows[i][3] };
     }
   }
-  throw new Error('Invalid credentials');
+  throw new Error('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+}
+
+function hashPwd(password) {
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    password + SECRET_KEY,
+    Utilities.Charset.UTF_8
+  );
+  return bytes.map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
+}
+
+function buildToken(email, role) {
+  return Utilities.base64EncodeWebSafe(
+    JSON.stringify({ email, role, exp: Date.now() + 86400000 })
+  );
 }
 
 function verifyToken(token) {
+  if (!token) return { valid: false, error: 'No token' };
   try {
-    if (!token) return { valid: false };
-    const payload = JSON.parse(Utilities.newBlob(Utilities.base64Decode(token)).getDataAsString());
-    if (payload.exp < Date.now()) return { valid: false, error: 'Token expired' };
+    const json    = Utilities.newBlob(Utilities.base64DecodeWebSafe(token)).getDataAsString();
+    const payload = JSON.parse(json);
+    if (payload.exp < Date.now()) return { valid: false, error: 'Expired' };
     return { valid: true, payload };
   } catch (e) {
-    return { valid: false, error: e.message };
+    return { valid: false, error: String(e.message) };
   }
 }
 
-// ── Students ─────────────────────────────────────────────────
-function getStudents(params) {
-  const sheet = getSheet(SHEETS.STUDENTS);
-  const rows = sheet.getDataRange().getValues();
-  const headers = rows[0];
-  const students = [];
+// ════════════════════════════════════════════
+// Students
+// ════════════════════════════════════════════
 
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
+function doGetStudents(p) {
+  if (!p) p = {};
+  const sheet   = openSheet(SHEETS.STUDENTS);
+  const data    = sheet.getDataRange().getValues();
+  const headers = data[0] || [];
+  const list    = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
     if (!row[0]) continue;
     const s = {};
     headers.forEach((h, j) => { s[h] = row[j]; });
 
-    // Filter by class/room if specified
-    if (params.class && s.classLevel !== params.class) continue;
-    if (params.room && s.room !== params.room) continue;
+    if (p.classLevel && s.classLevel !== p.classLevel) continue;
+    if (p.room       && String(s.room) !== String(p.room)) continue;
 
-    // Parse face descriptor
     if (s.faceDescriptorJson) {
-      try { s.faceDescriptor = JSON.parse(s.faceDescriptorJson); } catch (e) {}
+      try { s.faceDescriptor = JSON.parse(s.faceDescriptorJson); } catch (_) {}
     }
     delete s.faceDescriptorJson;
-    students.push(s);
+    list.push(s);
   }
-  return students;
+  return list;
 }
 
-function addStudent(params) {
-  const sheet = getSheet(SHEETS.STUDENTS);
-  const id = params.studentId || generateId('S');
-
-  // Check duplicate
-  const existing = sheet.getDataRange().getValues();
-  for (let i = 1; i < existing.length; i++) {
-    if (existing[i][0] === id) throw new Error(`Student ID ${id} already exists`);
-  }
-
-  const descriptorJson = params.faceDescriptor ? JSON.stringify(params.faceDescriptor) : '';
-  const newRow = [
-    id, params.prefix || '', params.firstName, params.lastName,
-    params.classLevel || params.class, params.room, params.number || 1,
-    params.gender || 'ชาย', params.faceImageUrl || '', descriptorJson,
-    'active', new Date().toISOString()
-  ];
-  sheet.appendRow(newRow);
-  logAudit('ADD_STUDENT', id, `${params.prefix}${params.firstName} ${params.lastName}`);
-  return { id, success: true };
-}
-
-function updateStudent(params) {
-  const sheet = getSheet(SHEETS.STUDENTS);
-  const rows = sheet.getDataRange().getValues();
-
+function doAddStudent(p) {
+  if (!p) throw new Error('ไม่มีข้อมูล');
+  const id    = String(p.studentId || generateId('S'));
+  const sheet = openSheet(SHEETS.STUDENTS);
+  const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === params.studentId) {
-      if (params.firstName) sheet.getRange(i + 1, 3).setValue(params.firstName);
-      if (params.lastName) sheet.getRange(i + 1, 4).setValue(params.lastName);
-      if (params.classLevel) sheet.getRange(i + 1, 5).setValue(params.classLevel);
-      if (params.room) sheet.getRange(i + 1, 6).setValue(params.room);
-      if (params.faceImageUrl) sheet.getRange(i + 1, 9).setValue(params.faceImageUrl);
-      if (params.faceDescriptor) sheet.getRange(i + 1, 10).setValue(JSON.stringify(params.faceDescriptor));
-      logAudit('UPDATE_STUDENT', params.studentId, 'Updated');
+    if (String(rows[i][0]) === id) throw new Error('รหัส ' + id + ' มีอยู่แล้ว');
+  }
+  const descJson = p.faceDescriptor ? JSON.stringify(p.faceDescriptor) : '';
+  sheet.appendRow([
+    id,
+    p.prefix     || '',
+    p.firstName  || '',
+    p.lastName   || '',
+    p.classLevel || p['class'] || '',
+    p.room       || '',
+    p.number     || p.no || 1,
+    p.gender     || 'ชาย',
+    p.faceImageUrl || '',
+    descJson,
+    'active',
+    new Date().toISOString()
+  ]);
+  safeLog('ADD_STUDENT', id, (p.firstName||'') + ' ' + (p.lastName||''));
+  return { studentId: id, success: true };
+}
+
+function doUpdateStudent(p) {
+  if (!p || !p.studentId) throw new Error('ต้องระบุ studentId');
+  const id    = String(p.studentId);
+  const sheet = openSheet(SHEETS.STUDENTS);
+  const data  = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === id) {
+      const r = i + 1;
+      if (p.prefix        !== undefined) sheet.getRange(r, 2).setValue(p.prefix);
+      if (p.firstName     !== undefined) sheet.getRange(r, 3).setValue(p.firstName);
+      if (p.lastName      !== undefined) sheet.getRange(r, 4).setValue(p.lastName);
+      if (p.classLevel    !== undefined) sheet.getRange(r, 5).setValue(p.classLevel);
+      if (p.room          !== undefined) sheet.getRange(r, 6).setValue(p.room);
+      if (p.number        !== undefined) sheet.getRange(r, 7).setValue(p.number);
+      if (p.faceImageUrl  !== undefined) sheet.getRange(r, 9).setValue(p.faceImageUrl);
+      if (p.faceDescriptor !== undefined) sheet.getRange(r,10).setValue(JSON.stringify(p.faceDescriptor));
+      safeLog('UPDATE_STUDENT', id, 'OK');
       return { success: true };
     }
   }
-  throw new Error('Student not found');
+  throw new Error('ไม่พบนักเรียน ID: ' + id);
 }
 
-function deleteStudent(params) {
-  const sheet = getSheet(SHEETS.STUDENTS);
-  const rows = sheet.getDataRange().getValues();
-
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === params.studentId) {
+function doDeleteStudent(p) {
+  if (!p || !p.studentId) throw new Error('ต้องระบุ studentId');
+  const id    = String(p.studentId);
+  const sheet = openSheet(SHEETS.STUDENTS);
+  const data  = sheet.getDataRange().getValues();
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (String(data[i][0]) === id) {
       sheet.deleteRow(i + 1);
-      logAudit('DELETE_STUDENT', params.studentId, 'Deleted');
+      safeLog('DELETE_STUDENT', id, 'OK');
       return { success: true };
     }
   }
-  throw new Error('Student not found');
+  throw new Error('ไม่พบนักเรียน ID: ' + id);
 }
 
-// ── Attendance ───────────────────────────────────────────────
-function checkAttendance(params) {
-  const { studentId, method, deviceId, note } = params;
-  const sheet = getSheet(SHEETS.ATTENDANCE);
+// ════════════════════════════════════════════
+// Attendance
+// ════════════════════════════════════════════
 
-  const now = new Date();
-  const dateStr = Utilities.formatDate(now, 'Asia/Bangkok', 'yyyy-MM-dd');
-  const timeStr = Utilities.formatDate(now, 'Asia/Bangkok', 'HH:mm');
+function doCheckAttendance(p) {
+  if (!p || !p.studentId) throw new Error('ต้องระบุ studentId');
+  const studentId = String(p.studentId);
+  const tz    = 'Asia/Bangkok';
+  const now   = new Date();
+  const date  = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  const time  = Utilities.formatDate(now, tz, 'HH:mm');
+  const sheet = openSheet(SHEETS.ATTENDANCE);
 
-  // Check duplicate
-  const existingRows = sheet.getDataRange().getValues();
-  const dupMinutes = parseInt(getSettingValue('checkDuplicateMinutes')) || 10;
-  const dupMs = dupMinutes * 60 * 1000;
-
-  for (let i = 1; i < existingRows.length; i++) {
-    const row = existingRows[i];
-    if (row[3] === studentId && row[1] === dateStr) {
-      const rowTime = new Date(`${dateStr}T${row[2]}:00+07:00`);
-      if (now - rowTime < dupMs) {
-        return { duplicate: true, message: 'นักเรียนคนนี้เช็คชื่อแล้ว', existingTime: row[2] };
+  // Anti-duplicate
+  const dupMin = parseInt(getSettingVal('checkDuplicateMinutes') || '10');
+  const rows   = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][3]) === studentId && String(rows[i][1]) === date) {
+      const prev = new Date(date + 'T' + rows[i][2] + ':00+07:00').getTime();
+      if (now.getTime() - prev < dupMin * 60000) {
+        return { duplicate: true, message: 'เช็คชื่อแล้ว', existingTime: rows[i][2] };
       }
     }
   }
 
-  // Determine status
-  const lateTime = getSettingValue('lateTime') || '08:30';
+  // Status
+  const lateTime = getSettingVal('lateTime') || '08:30';
   const [lh, lm] = lateTime.split(':').map(Number);
-  const [ch, cm] = timeStr.split(':').map(Number);
+  const [ch, cm] = time.split(':').map(Number);
   const status = (ch > lh || (ch === lh && cm > lm)) ? 'late' : 'present';
 
-  // Get student name
-  const students = getStudents({});
-  const student = students.find(s => s.studentId === studentId);
-  const studentName = student ? `${student.prefix}${student.firstName} ${student.lastName}` : studentId;
+  // Name
+  const students = doGetStudents({});
+  const st = students.find(s => s.studentId === studentId);
+  const name = st ? (st.prefix||'') + (st.firstName||'') + ' ' + (st.lastName||'') : studentId;
 
-  const attendanceId = generateId('A');
-  const newRow = [
-    attendanceId, dateStr, timeStr, studentId,
-    studentName, student?.classLevel || '', student?.room || '',
-    status, method || 'face', deviceId || 'DEVICE-01', note || '',
-    new Date().toISOString()
-  ];
-  sheet.appendRow(newRow);
-
-  return {
-    attendanceId, studentId, studentName,
-    date: dateStr, time: timeStr, status,
-    class: student?.classLevel, room: student?.room
-  };
+  const aId = generateId('A');
+  sheet.appendRow([
+    aId, date, time, studentId, name,
+    st ? st.classLevel : '',
+    st ? st.room : '',
+    status,
+    p.method   || 'face',
+    p.deviceId || 'DEVICE-01',
+    p.note     || '',
+    now.toISOString()
+  ]);
+  safeLog('CHECKIN', studentId, status + '@' + time);
+  return { attendanceId: aId, studentId, studentName: name, date, time, status,
+           classLevel: st ? st.classLevel : '', room: st ? st.room : '' };
 }
 
-function getAttendance(params) {
-  const sheet = getSheet(SHEETS.ATTENDANCE);
-  const rows = sheet.getDataRange().getValues();
-  const headers = rows[0];
-  const records = [];
-
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row[0]) continue;
+function doGetAttendance(p) {
+  if (!p) p = {};
+  const sheet   = openSheet(SHEETS.ATTENDANCE);
+  const data    = sheet.getDataRange().getValues();
+  const headers = data[0] || [];
+  const list    = [];
+  for (let i = 1; i < data.length; i++) {
+    if (!data[i][0]) continue;
     const r = {};
-    headers.forEach((h, j) => { r[h] = row[j]; });
-
-    if (params.date && r.date !== params.date) continue;
-    if (params.studentId && r.studentId !== params.studentId) continue;
-    if (params.class && r.classLevel !== params.class) continue;
-    if (params.dateFrom && r.date < params.dateFrom) continue;
-    if (params.dateTo && r.date > params.dateTo) continue;
-    records.push(r);
+    headers.forEach((h, j) => { r[h] = data[i][j]; });
+    if (p.date       && String(r.date)       !== p.date)       continue;
+    if (p.studentId  && String(r.studentId)  !== p.studentId)  continue;
+    if (p.classLevel && String(r.classLevel) !== p.classLevel) continue;
+    if (p.dateFrom   && String(r.date)        < p.dateFrom)    continue;
+    if (p.dateTo     && String(r.date)        > p.dateTo)      continue;
+    list.push(r);
   }
-  return records;
+  return list;
 }
 
-function updateAttendanceStatus(params) {
-  const sheet = getSheet(SHEETS.ATTENDANCE);
-  const rows = sheet.getDataRange().getValues();
-
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === params.attendanceId || (rows[i][3] === params.studentId && rows[i][1] === params.date)) {
-      sheet.getRange(i + 1, 8).setValue(params.status);
-      sheet.getRange(i + 1, 11).setValue(params.note || 'แก้ไขย้อนหลัง');
-      logAudit('UPDATE_ATTENDANCE', params.studentId, `Status → ${params.status}`);
+function doUpdateAttendanceStatus(p) {
+  if (!p) throw new Error('ไม่มีข้อมูล');
+  const sheet = openSheet(SHEETS.ATTENDANCE);
+  const data  = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const byId  = p.attendanceId && String(data[i][0]) === String(p.attendanceId);
+    const byKey = p.studentId && p.date &&
+                  String(data[i][3]) === String(p.studentId) &&
+                  String(data[i][1]) === String(p.date);
+    if (byId || byKey) {
+      sheet.getRange(i+1, 8).setValue(p.status || 'present');
+      sheet.getRange(i+1,11).setValue(p.note   || 'แก้ไขโดยครู');
+      safeLog('UPDATE_STATUS', p.studentId, '→' + p.status);
       return { success: true };
     }
   }
-  throw new Error('Attendance record not found');
+  throw new Error('ไม่พบรายการ');
 }
 
-// ── Dashboard ────────────────────────────────────────────────
-function getDashboard(params) {
-  const { range } = params;
+// ════════════════════════════════════════════
+// Dashboard
+// ════════════════════════════════════════════
+
+function doGetDashboard(p) {
+  if (!p) p = {};
+  const tz  = 'Asia/Bangkok';
   const now = new Date();
-  let dateFrom, dateTo;
-
-  if (range === 'today') {
-    dateFrom = dateTo = Utilities.formatDate(now, 'Asia/Bangkok', 'yyyy-MM-dd');
-  } else if (range === 'week') {
-    const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1);
-    dateFrom = Utilities.formatDate(mon, 'Asia/Bangkok', 'yyyy-MM-dd');
-    dateTo = Utilities.formatDate(now, 'Asia/Bangkok', 'yyyy-MM-dd');
-  } else {
-    dateFrom = Utilities.formatDate(new Date(now.getFullYear(), now.getMonth(), 1), 'Asia/Bangkok', 'yyyy-MM-dd');
-    dateTo = Utilities.formatDate(now, 'Asia/Bangkok', 'yyyy-MM-dd');
+  let df, dt;
+  switch (p.range) {
+    case 'week': {
+      const mon = new Date(now);
+      mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      df = Utilities.formatDate(mon, tz, 'yyyy-MM-dd');
+      dt = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+      break;
+    }
+    case 'month':
+      df = Utilities.formatDate(new Date(now.getFullYear(), now.getMonth(), 1), tz, 'yyyy-MM-dd');
+      dt = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+      break;
+    default:
+      df = dt = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
   }
-
-  const records = getAttendance({ dateFrom, dateTo });
-  const students = getStudents({});
-
-  const counts = { present: 0, late: 0, absent: 0, leave: 0 };
-  const seen = new Set();
-  records.forEach(r => {
-    const key = `${r.studentId}_${r.date}`;
-    if (!seen.has(key)) { seen.add(key); counts[r.status] = (counts[r.status] || 0) + 1; }
+  const recs   = doGetAttendance({ dateFrom: df, dateTo: dt });
+  const counts = { present:0, late:0, absent:0, leave:0 };
+  const seen   = {};
+  recs.forEach(r => {
+    const k = r.studentId + '_' + r.date;
+    if (!seen[k]) { seen[k] = true; counts[r.status] = (counts[r.status]||0) + 1; }
   });
-
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  const presentRate = total > 0 ? ((counts.present / total) * 100).toFixed(1) : 0;
-
-  return { counts, total, presentRate, students: students.length, range: { dateFrom, dateTo } };
+  const total = Object.values(counts).reduce((a,b)=>a+b, 0);
+  return { counts, total, presentRate: total ? ((counts.present/total)*100).toFixed(1) : '0.0',
+           dateFrom: df, dateTo: dt };
 }
 
-function getClassSummary(params) {
-  const students = getStudents(params);
-  const records = getAttendance(params);
-  const classMap = {};
-
+function doGetClassSummary(p) {
+  if (!p) p = {};
+  const students = doGetStudents(p);
+  const recs     = doGetAttendance(p);
+  const map      = {};
   students.forEach(s => {
-    const key = `${s.classLevel}/${s.room}`;
-    if (!classMap[key]) classMap[key] = { class: s.classLevel, room: s.room, total: 0, present: 0, late: 0, absent: 0 };
-    classMap[key].total++;
+    const k = s.classLevel + '/' + s.room;
+    if (!map[k]) map[k] = { classLevel:s.classLevel, room:s.room, total:0, present:0, late:0, absent:0 };
+    map[k].total++;
   });
-
-  records.forEach(r => {
-    const key = `${r.classLevel}/${r.room}`;
-    if (classMap[key]) {
-      if (r.status === 'present') classMap[key].present++;
-      else if (r.status === 'late') classMap[key].late++;
-      else if (r.status === 'absent') classMap[key].absent++;
+  recs.forEach(r => {
+    const k = r.classLevel + '/' + r.room;
+    if (map[k]) {
+      if      (r.status === 'present') map[k].present++;
+      else if (r.status === 'late')    map[k].late++;
+      else if (r.status === 'absent')  map[k].absent++;
     }
   });
-
-  return Object.values(classMap).map(c => ({
-    ...c,
-    rate: c.total > 0 ? ((c.present + c.late) / c.total * 100).toFixed(1) : 0
-  })).sort((a, b) => b.rate - a.rate);
+  return Object.values(map).map(c => ({
+    ...c, rate: c.total ? ((c.present+c.late)/c.total*100).toFixed(1) : '0.0'
+  })).sort((a,b) => parseFloat(b.rate)-parseFloat(a.rate));
 }
 
-// ── Face Image ───────────────────────────────────────────────
-function uploadFaceImage(params) {
-  const { studentId, imageBase64, mimeType } = params;
-  const folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-  const faceFolder = getOrCreateSubfolder(folder, 'Faces');
+// ════════════════════════════════════════════
+// Face Image
+// ════════════════════════════════════════════
 
-  const imageData = Utilities.base64Decode(imageBase64.replace(/^data:image\/\w+;base64,/, ''));
-  const blob = Utilities.newBlob(imageData, mimeType || 'image/jpeg', `${studentId}.jpg`);
-  const file = faceFolder.createFile(blob);
+function doUploadFaceImage(p) {
+  if (!p || !p.imageBase64) throw new Error('ต้องส่ง imageBase64');
+  const base64 = p.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+  const parent = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+  const folder = getOrCreateFolder(parent, 'FaceImages');
+  const blob   = Utilities.newBlob(
+    Utilities.base64Decode(base64),
+    p.mimeType || 'image/jpeg',
+    (p.studentId || 'unknown') + '.jpg'
+  );
+  const file = folder.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
-  const fileId = file.getId();
-  const imageUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
-
-  logAudit('UPLOAD_FACE', studentId, `Image uploaded: ${fileId}`);
-  return { fileId, imageUrl };
+  const url = 'https://drive.google.com/uc?export=view&id=' + file.getId();
+  safeLog('UPLOAD_FACE', p.studentId, file.getId());
+  return { fileId: file.getId(), imageUrl: url };
 }
 
-function saveFaceDescriptor(params) {
-  return updateStudent({
-    studentId: params.studentId,
-    faceDescriptor: params.descriptor,
-    faceImageUrl: params.imageUrl
+function doSaveFaceDescriptor(p) {
+  return doUpdateStudent({
+    studentId:      p.studentId,
+    faceDescriptor: p.descriptor,
+    faceImageUrl:   p.imageUrl || ''
   });
 }
 
-// ── Settings ─────────────────────────────────────────────────
-function getSchoolSettings() {
-  const sheet = getSheet(SHEETS.SETTINGS);
-  const rows = sheet.getDataRange().getValues();
-  const settings = {};
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0]) settings[rows[i][0]] = rows[i][1];
+// ════════════════════════════════════════════
+// Settings
+// ════════════════════════════════════════════
+
+function doGetSettings() {
+  const sheet = openSheet(SHEETS.SETTINGS);
+  const data  = sheet.getDataRange().getValues();
+  const out   = {};
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]) out[String(data[i][0])] = data[i][1];
   }
-  return settings;
+  return out;
 }
 
-function getSettingValue(key) {
-  const settings = getSchoolSettings();
-  return settings[key] || null;
+function getSettingVal(key) {
+  const s = doGetSettings();
+  return s[key] !== undefined ? s[key] : null;
 }
 
-function saveSchoolSettings(params) {
-  const sheet = getSheet(SHEETS.SETTINGS);
-  const rows = sheet.getDataRange().getValues();
-  const { key, value } = params;
-
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === key) {
-      sheet.getRange(i + 1, 2).setValue(value);
+function doSaveSetting(p) {
+  if (!p || !p.key) throw new Error('ต้องระบุ key');
+  const key   = String(p.key);
+  const value = p.value !== undefined ? String(p.value) : '';
+  const sheet = openSheet(SHEETS.SETTINGS);
+  const data  = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === key) {
+      sheet.getRange(i+1, 2).setValue(value);
+      sheet.getRange(i+1, 3).setValue(new Date().toISOString());
       return { success: true };
     }
   }
@@ -411,94 +461,189 @@ function saveSchoolSettings(params) {
   return { success: true };
 }
 
-// ── Helpers ──────────────────────────────────────────────────
-function getSheet(name) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  let sheet = ss.getSheetByName(name);
+// ════════════════════════════════════════════
+// Shared Helpers
+// ════════════════════════════════════════════
+
+function openSheet(name) {
+  const ss    = SpreadsheetApp.openById(SHEET_ID);
+  let   sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
-    initSheetHeaders(sheet, name);
+    setHeaders(sheet, name);
   }
   return sheet;
 }
 
-function initSheetHeaders(sheet, name) {
-  const headers = {
-    [SHEETS.STUDENTS]: ['studentId','prefix','firstName','lastName','classLevel','room','number','gender','faceImageUrl','faceDescriptorJson','activeStatus','createdAt'],
-    [SHEETS.ATTENDANCE]: ['attendanceId','date','time','studentId','studentName','classLevel','room','status','method','deviceId','note','createdAt'],
-    [SHEETS.USERS]: ['email','name','role','allowedClassRoom','passwordHash','createdAt'],
-    [SHEETS.SETTINGS]: ['key','value','updatedAt'],
-    [SHEETS.AUDIT]: ['timestamp','action','userId','detail']
-  };
-  if (headers[name]) {
-    sheet.appendRow(headers[name]);
-    sheet.getRange(1, 1, 1, headers[name].length).setFontWeight('bold').setBackground('#4f46e5').setFontColor('#ffffff');
-    sheet.setFrozenRows(1);
-  }
+const HEADER_MAP = {
+  Students:   ['studentId','prefix','firstName','lastName','classLevel','room',
+               'number','gender','faceImageUrl','faceDescriptorJson','activeStatus','createdAt'],
+  Attendance: ['attendanceId','date','time','studentId','studentName','classLevel',
+               'room','status','method','deviceId','note','createdAt'],
+  Users:      ['email','name','role','allowedClassRoom','passwordHash','createdAt'],
+  Settings:   ['key','value','updatedAt'],
+  AuditLog:   ['timestamp','action','userId','detail']
+};
+
+function setHeaders(sheet, name) {
+  const h = HEADER_MAP[name];
+  if (!h || !h.length) return;
+  sheet.appendRow(h);
+  sheet.getRange(1, 1, 1, h.length)
+       .setFontWeight('bold')
+       .setBackground('#4f46e5')
+       .setFontColor('#ffffff');
+  sheet.setFrozenRows(1);
+  h.forEach((_, i) => sheet.autoResizeColumn(i + 1));
 }
 
-function getOrCreateSubfolder(parent, name) {
-  const folders = parent.getFoldersByName(name);
-  return folders.hasNext() ? folders.next() : parent.createFolder(name);
+function getOrCreateFolder(parent, name) {
+  const it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
 }
 
 function generateId(prefix) {
-  return `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  return String(prefix) + Date.now() + Math.floor(Math.random() * 9000 + 1000);
 }
 
-function logAudit(action, userId, detail) {
+function safeLog(action, userId, detail) {
   try {
-    const sheet = getSheet(SHEETS.AUDIT);
-    sheet.appendRow([new Date().toISOString(), action, userId, detail]);
-  } catch (e) {}
+    openSheet(SHEETS.AUDIT).appendRow([
+      new Date().toISOString(), action, String(userId||''), String(detail||'')
+    ]);
+  } catch (_) { /* ไม่ให้ log crash ทำให้ request พัง */ }
 }
 
-// ── Setup Function (รันครั้งแรกเพื่อสร้าง Sheets) ────────────
+// ════════════════════════════════════════════
+// ★  SETUP — รันฟังก์ชันนี้ครั้งแรก  ★
+//
+//  วิธีใช้:
+//  1. เลือก  setupSheets  ใน dropdown บน toolbar
+//  2. กด  ▶ Run
+//  3. อนุญาต permissions (Google จะถาม 1 ครั้ง)
+//  4. ดู log ใน Execution Log ด้านล่าง
+// ════════════════════════════════════════════
+
 function setupSheets() {
-  Object.values(SHEETS).forEach(name => {
-    const sheet = getSheet(name);
-    Logger.log(`Sheet "${name}" ready`);
+  Logger.log('════════════════════════════════════');
+  Logger.log('  FaceAttend — Setup Started');
+  Logger.log('════════════════════════════════════');
+
+  // 1) สร้าง / ตรวจสอบทุก Sheet
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  Object.values(SHEETS).forEach(function(name) {
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) {
+      sheet = ss.insertSheet(name);
+      setHeaders(sheet, name);
+      Logger.log('  ✅ สร้าง Sheet: ' + name);
+    } else {
+      Logger.log('  ✔  Sheet มีอยู่แล้ว: ' + name);
+    }
   });
 
-  // Add default settings
-  const settingsSheet = getSheet(SHEETS.SETTINGS);
-  const defaults = [
-    ['schoolName', 'โรงเรียนสาธิตมหาวิทยาลัย'],
-    ['schoolLogoUrl', ''],
+  // 2) ใส่ Default Settings
+  var settingsSheet = openSheet(SHEETS.SETTINGS);
+  var existingRows  = settingsSheet.getDataRange().getValues();
+  var existingKeys  = existingRows.map(function(r){ return String(r[0]); });
+
+  var defaults = [
+    ['schoolName',            'โรงเรียนสาธิตมหาวิทยาลัย'],
+    ['schoolLogoUrl',         ''],
     ['checkDuplicateMinutes', '10'],
-    ['lateTime', '08:30'],
-    ['absentTime', '10:00'],
-    ['faceThreshold', '0.5']
+    ['lateTime',              '08:30'],
+    ['absentTime',            '10:00'],
+    ['faceThreshold',         '0.5']
   ];
-  defaults.forEach(([k, v]) => {
-    const rows = settingsSheet.getDataRange().getValues();
-    const exists = rows.some(r => r[0] === k);
-    if (!exists) settingsSheet.appendRow([k, v, new Date().toISOString()]);
+  var addedSettings = 0;
+  defaults.forEach(function(pair) {
+    if (!existingKeys.includes(pair[0])) {
+      settingsSheet.appendRow([pair[0], pair[1], new Date().toISOString()]);
+      addedSettings++;
+    }
   });
+  Logger.log('  ✅ Settings: เพิ่ม ' + addedSettings + ' รายการ');
 
-  // Add default admin user
-  const usersSheet = getSheet(SHEETS.USERS);
-  const userRows = usersSheet.getDataRange().getValues();
-  if (userRows.length <= 1) {
-    const hash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'admin1234' + SECRET_KEY)
-      .map(b => (b + 256).toString(16).slice(-2)).join('');
-    usersSheet.appendRow(['admin@school.ac.th', 'ผู้ดูแลระบบ', 'admin', 'all', hash, new Date().toISOString()]);
+  // 3) สร้าง Admin User ถ้ายังไม่มี
+  var usersSheet  = openSheet(SHEETS.USERS);
+  var userRows    = usersSheet.getDataRange().getValues();
+  var adminEmail  = 'admin@school.ac.th';
+  var adminExists = false;
+  for (var i = 1; i < userRows.length; i++) {
+    if (String(userRows[i][0]).toLowerCase() === adminEmail) { adminExists = true; break; }
+  }
+  if (!adminExists) {
+    usersSheet.appendRow([
+      adminEmail,
+      'ผู้ดูแลระบบ',
+      'admin',
+      'all',
+      hashPwd('admin1234'),
+      new Date().toISOString()
+    ]);
+    Logger.log('  ✅ สร้าง Admin: ' + adminEmail + '  รหัสผ่าน: admin1234');
+  } else {
+    Logger.log('  ✔  Admin มีอยู่แล้ว: ' + adminEmail);
   }
 
-  Logger.log('✅ Setup complete!');
+  Logger.log('════════════════════════════════════');
+  Logger.log('  ✅ Setup เสร็จสมบูรณ์!');
+  Logger.log('  Sheets: ' + Object.values(SHEETS).join(', '));
+  Logger.log('  Login: ' + adminEmail + ' / admin1234');
+  Logger.log('  ⚠️  เปลี่ยนรหัสผ่านหลัง deploy!');
+  Logger.log('════════════════════════════════════');
 }
 
-// ── Sample Data (รันเพื่อเพิ่มข้อมูลตัวอย่าง) ────────────────
-function insertSampleData() {
-  const sampleStudents = [
-    ['S001','ด.ช.','ธนกฤต','มั่นคง','ม.1','1',1,'ชาย','','','active'],
-    ['S002','ด.ญ.','พิชญา','สุวรรณ','ม.1','1',2,'หญิง','','','active'],
-    ['S003','ด.ช.','กิตติภูมิ','โชติกิจ','ม.1','1',3,'ชาย','','','active'],
-    ['S004','ด.ญ.','ณัฐนรี','ทองดี','ม.1','2',1,'หญิง','','','active'],
-    ['S005','ด.ช.','ชยานันต์','พิสุทธิ์','ม.2','1',1,'ชาย','','','active'],
+// ── เพิ่มข้อมูลนักเรียนตัวอย่าง ──────────────
+function insertSampleStudents() {
+  var samples = [
+    ['S001','ด.ช.','ธนกฤต',  'มั่นคง',  'ม.1','1',1,'ชาย'],
+    ['S002','ด.ญ.','พิชญา',   'สุวรรณ', 'ม.1','1',2,'หญิง'],
+    ['S003','ด.ช.','กิตติภูมิ','โชติกิจ','ม.1','1',3,'ชาย'],
+    ['S004','ด.ญ.','ณัฐนรี',  'ทองดี',  'ม.1','2',1,'หญิง'],
+    ['S005','ด.ช.','ชยานันต์','พิสุทธิ์','ม.2','1',1,'ชาย'],
   ];
+  var sheet    = openSheet(SHEETS.STUDENTS);
+  var existing = sheet.getDataRange().getValues().map(function(r){ return String(r[0]); });
+  var added    = 0;
+  samples.forEach(function(row) {
+    if (!existing.includes(row[0])) {
+      sheet.appendRow(row.concat(['','','active',new Date().toISOString()]));
+      added++;
+    }
+  });
+  Logger.log('✅ เพิ่มนักเรียนตัวอย่าง ' + added + ' คน');
+}
 
-  const sheet = getSheet(SHEETS.STUDENTS);
-  sampleStudents.forEach(row => sheet.appendRow([...row, new Date().toISOString()]));
-  Logger.log(`✅ Inserted ${sampleStudents.length} sample students`);
+// ── เพิ่ม Teacher / Viewer user ──────────────
+function addExtraUsers() {
+  var usersSheet = openSheet(SHEETS.USERS);
+  var extra = [
+    ['teacher@school.ac.th','อาจารย์สมใจ ดีงาม','teacher','ม.1/1,ม.1/2','teacher1234'],
+    ['viewer@school.ac.th', 'ผู้ปกครอง ทดสอบ', 'viewer', '',             'viewer1234'],
+  ];
+  var rows    = usersSheet.getDataRange().getValues();
+  var emails  = rows.map(function(r){ return String(r[0]).toLowerCase(); });
+  var added   = 0;
+  extra.forEach(function(u) {
+    if (!emails.includes(u[0].toLowerCase())) {
+      usersSheet.appendRow([u[0],u[1],u[2],u[3],hashPwd(u[4]),new Date().toISOString()]);
+      Logger.log('  ✅ เพิ่ม user: ' + u[0] + ' (' + u[2] + ')');
+      added++;
+    }
+  });
+  Logger.log('รวมเพิ่ม ' + added + ' users');
+}
+
+// ── ทดสอบว่า API ทำงานได้ (ไม่ต้องใช้ HTTP) ──
+function testAPI() {
+  Logger.log('▶ Test ping...');
+  var r = JSON.parse(handleRequest({ action: 'ping' }).getContent());
+  Logger.log('  ping: ' + JSON.stringify(r.data));
+
+  Logger.log('▶ Test getSettings...');
+  var r2 = JSON.parse(handleRequest({ action: 'getSettings', token: 'dummy' }).getContent());
+  // จะ Unauthorized ซึ่งถูกต้อง
+  Logger.log('  (ไม่มี token) → ' + r2.error);
+  Logger.log('✅ testAPI ผ่าน!');
 }
