@@ -4,11 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FaceAttend — เข้าสู่ระบบ</title>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
 <link rel="stylesheet" href="styles/main.css">
 
-<!-- Google Identity Services (GSI) — OAuth 2.0 Library ล่าสุดของ Google -->
+<!-- Google Identity Services -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <style>
@@ -46,7 +48,7 @@
 .setup-text{font-size:12px;color:var(--text-muted);line-height:1.5}
 .setup-text code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:11px;color:var(--primary-light)}
 
-/* ── Google Button (Official Style) ── */
+/* ── Google Button ── */
 .google-btn{
   width:100%;display:flex;align-items:center;justify-content:center;gap:12px;
   background:#fff;color:#3c4043;border:1px solid #dadce0;
@@ -57,7 +59,6 @@
 .google-btn:hover{background:#f8f9fa;box-shadow:0 2px 8px rgba(0,0,0,.2);transform:translateY(-1px)}
 .google-btn:active{transform:translateY(0)}
 .google-btn:disabled{opacity:.6;cursor:not-allowed}
-[data-theme="light"] .google-btn{background:#fff}
 [data-theme="dark"] .google-btn,
 :not([data-theme]) .google-btn{background:#131314;color:#e3e3e3;border-color:#444}
 [data-theme="dark"] .google-btn:hover,
@@ -83,8 +84,16 @@
 /* ── OAuth loading ── */
 .oauth-loading{display:none;align-items:center;justify-content:center;gap:10px;padding:14px;color:var(--text-muted);font-size:13px}
 .oauth-loading.show{display:flex}
+.loading-spinner{
+  width:16px;height:16px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.15);
+  border-top-color: var(--primary-light);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
+
 <body style="display:flex;align-items:center;justify-content:center;min-height:100vh;overflow:hidden">
 
 <div class="bg-mesh"></div>
@@ -99,42 +108,39 @@
 <div class="wrap">
   <div class="card">
 
-    <!-- Logo -->
     <div class="logo-wrap">
       <div class="logo-icon">🎓</div>
       <div class="logo-title">FaceAttend</div>
-      <div class="logo-sub">ระบบเช็คชื่อนักเรียนด้วยใบหน้า · <span id="schoolNameDisplay">โรงเรียนสาธิต</span></div>
+      <div class="logo-sub">ระบบเช็คชื่อนักเรียนด้วยใบหน้า · <span id="schoolNameDisplay">โรงเรียนบ้านใหม่</span></div>
     </div>
 
-    <!-- Setup Guide Banner (แสดงเมื่อยังไม่ได้ตั้งค่า Client ID) -->
     <div class="setup-banner" id="setupBanner">
       <b>⚙️ ยังไม่ได้ตั้งค่า Google OAuth</b> — ปุ่ม "Sign in with Google" ยังไม่ทำงาน
       <div class="setup-step">
         <div class="setup-num">1</div>
-        <div class="setup-text">ไปที่ <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--primary-light)">Google Cloud Console</a> → สร้างโปรเจค</div>
+        <div class="setup-text">ไปที่ Google Cloud Console → สร้างโปรเจค</div>
       </div>
       <div class="setup-step">
         <div class="setup-num">2</div>
-        <div class="setup-text">APIs &amp; Services → Credentials → <b>Create OAuth 2.0 Client ID</b> → เลือก "Web application"</div>
+        <div class="setup-text">APIs &amp; Services → Credentials → Create OAuth Client ID → Web application</div>
       </div>
       <div class="setup-step">
         <div class="setup-num">3</div>
-        <div class="setup-text">Authorized JavaScript origins: ใส่ URL เว็บของคุณ เช่น <code>https://username.github.io</code></div>
+        <div class="setup-text">Authorized JavaScript origins: <code>https://username.github.io</code></div>
       </div>
       <div class="setup-step">
         <div class="setup-num">4</div>
-        <div class="setup-text">คัดลอก <b>Client ID</b> (รูปแบบ <code>xxxx.apps.googleusercontent.com</code>)</div>
+        <div class="setup-text">Authorized redirect URIs: <code>.../oauth2callback.html</code></div>
       </div>
       <div class="setup-step">
         <div class="setup-num">5</div>
-        <div class="setup-text">เปิดไฟล์ <code>scripts/config.js</code> แก้ไข <code>GOOGLE_CLIENT_ID: 'วาง Client ID ที่นี่'</code></div>
+        <div class="setup-text">แก้ <code>scripts/config.js</code> → GOOGLE_CLIENT_ID</div>
       </div>
     </div>
 
-    <!-- Error box -->
     <div class="error-box" id="errorMsg">⚠️ <span id="errorText">เกิดข้อผิดพลาด</span></div>
 
-    <!-- Google Sign-In Button (Official GSI) -->
+    <!-- Google Sign-In -->
     <button class="google-btn" id="googleBtn" onclick="startGoogleLogin()">
       <svg width="20" height="20" viewBox="0 0 24 24">
         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -145,7 +151,6 @@
       <span id="googleBtnText">Sign in with Google</span>
     </button>
 
-    <!-- OAuth Loading indicator -->
     <div class="oauth-loading" id="oauthLoading">
       <div class="loading-spinner"></div>
       <span>กำลังยืนยันตัวตนกับ Google...</span>
@@ -159,11 +164,13 @@
       <input type="email" class="form-input" id="emailInput"
         placeholder="teacher@school.ac.th" autocomplete="email">
     </div>
+
     <div class="form-group">
       <label class="form-label">รหัสผ่าน</label>
       <input type="password" class="form-input" id="passwordInput"
         placeholder="••••••••" autocomplete="current-password">
     </div>
+
     <button class="btn-login" onclick="doEmailLogin()">
       <span id="loginBtnText">🔐 เข้าสู่ระบบ</span>
     </button>
@@ -173,305 +180,24 @@
             <span onclick="fillDemo('teacher')">ครู</span> ·
             <span onclick="fillDemo('viewer')">Viewer</span>
     </div>
-    <div class="version-tag">FaceAttend v2.2 · face-api.js + Google Workspace</div>
-  </div>
-</div>
 
-<!-- Role Debugger — แสดงเมื่อ ?debug=1 ใน URL -->
-<div id="roleDebugPanel" style="display:none;position:fixed;bottom:16px;left:16px;z-index:999;background:var(--bg-card);border:1px solid var(--border-strong);border-radius:12px;padding:16px;max-width:340px;font-size:12px;box-shadow:var(--shadow)">
-  <div style="font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-    🔍 Role Debugger <button onclick="document.getElementById('roleDebugPanel').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--text-muted)">✕</button>
+    <div class="version-tag">FaceAttend v2.3 · Google OAuth + Apps Script Token</div>
   </div>
-  <div style="color:var(--text-muted);margin-bottom:8px">ROLE_MAP ที่ตั้งค่าใน config.js:</div>
-  <div id="debugRoleMapList" style="font-family:monospace;font-size:11px;line-height:1.8;background:var(--bg-card2);padding:10px;border-radius:8px;max-height:160px;overflow-y:auto"></div>
-  <div style="margin-top:10px;color:var(--text-muted)">วิธีใช้: ดู Gmail ของตัวเองแล้วเพิ่มใน config.js</div>
 </div>
 
 <script src="scripts/config.js"></script>
+
 <script>
 // ════════════════════════════════════════════
-// Google OAuth 2.0 — Google Identity Services (GIS)
-// ════════════════════════════════════════════
-
-let googleClient = null;   // google.accounts.oauth2 client
-let googleUser   = null;   // decoded JWT payload หลัง login สำเร็จ
-
-function initGoogleOAuth() {
-  const clientId = CONFIG.GOOGLE_CLIENT_ID;
-
-  // ── ตรวจว่า Client ID ตั้งค่าแล้วหรือยัง ──
-  if (!clientId || clientId.includes('YOUR_GOOGLE') || clientId === '') {
-    document.getElementById('setupBanner').classList.add('show');
-    document.getElementById('googleBtn').disabled = true;
-    document.getElementById('googleBtnText').textContent = 'Google OAuth ยังไม่ได้ตั้งค่า';
-    return;
-  }
-
-  // ── ซ่อน banner เมื่อ Client ID พร้อม ──
-  document.getElementById('setupBanner').classList.remove('show');
-
-  // ── Initialize Google Identity Services ──
-  // google.accounts.id = Sign In With Google (one-tap + popup)
-  if (typeof google === 'undefined' || !google.accounts) {
-    console.warn('GSI library ยังโหลดไม่เสร็จ — รอสักครู่');
-    setTimeout(initGoogleOAuth, 800);
-    return;
-  }
-
-  google.accounts.id.initialize({
-    client_id:         clientId,
-    callback:          handleGoogleCredential,   // รับ JWT credential
-    auto_select:       false,
-    cancel_on_tap_outside: true,
-    ux_mode:           'popup',                  // เปิด popup แทน redirect
-    context:           'signin',
-  });
-
-  console.log('[OAuth] Google Identity Services พร้อมแล้ว ✅');
-}
-
-// ── เรียกเมื่อกดปุ่ม Sign in with Google ──
-function startGoogleLogin() {
-  const clientId = CONFIG.GOOGLE_CLIENT_ID;
-  if (!clientId || clientId.includes('YOUR_GOOGLE')) {
-    showError('กรุณาตั้งค่า GOOGLE_CLIENT_ID ใน scripts/config.js ก่อน');
-    return;
-  }
-
-  setGoogleBtnLoading(true);
-
-  // Prompt Google One-Tap / Popup
-  google.accounts.id.prompt((notification) => {
-    if (notification.isNotDisplayed()) {
-      // One-tap ถูก block (เช่น user ปิด) → ใช้ popup แทน
-      console.log('One-tap not displayed:', notification.getNotDisplayedReason());
-      openGooglePopup();
-    } else if (notification.isSkippedMoment()) {
-      console.log('One-tap skipped:', notification.getSkippedReason());
-      openGooglePopup();
-    }
-  });
-}
-
-// ── เปิด Google Popup แบบ manual ──
-function openGooglePopup() {
-  const clientId = CONFIG.GOOGLE_CLIENT_ID;
-  const scope    = 'openid email profile';
-  const redirectUri = window.location.origin + window.location.pathname.replace('index.html','') + 'oauth2callback.html';
-
-  // สร้าง OAuth2 URL
-  const params = new URLSearchParams({
-    client_id:     clientId,
-    redirect_uri:  redirectUri,
-    response_type: 'token id_token',   // implicit flow — ไม่ต้องมี backend
-    scope,
-    nonce:         Math.random().toString(36).slice(2),
-    prompt:        'select_account',
-  });
-
-  const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-
-  // เปิด popup
-  const popup = window.open(
-    oauthUrl,
-    'googleOAuth',
-    'width=500,height=620,scrollbars=yes,resizable=yes,left=' +
-    (screen.width/2 - 250) + ',top=' + (screen.height/2 - 310)
-  );
-
-  if (!popup) {
-    showError('Browser บล็อก popup — กรุณาอนุญาต popup สำหรับเว็บนี้');
-    setGoogleBtnLoading(false);
-    return;
-  }
-
-  setOAuthLoading(true);
-
-  // ตรวจว่า popup ส่ง token กลับมาหรือเปล่า
-  const timer = setInterval(() => {
-    try {
-      if (popup.closed) {
-        clearInterval(timer);
-        setGoogleBtnLoading(false);
-        setOAuthLoading(false);
-      }
-      // รับ postMessage จาก oauth2callback.html
-    } catch(_) {}
-  }, 500);
-
-  // รับ message จาก popup (oauth2callback.html จะ postMessage กลับมา)
-  window.addEventListener('message', function onMsg(e) {
-    if (e.origin !== window.location.origin) return;
-    if (e.data?.type === 'GOOGLE_OAUTH_SUCCESS') {
-      window.removeEventListener('message', onMsg);
-      clearInterval(timer);
-      popup.close();
-      setOAuthLoading(false);
-      processGoogleToken(e.data.credential || e.data.id_token, e.data.userInfo);
-    }
-    if (e.data?.type === 'GOOGLE_OAUTH_ERROR') {
-      window.removeEventListener('message', onMsg);
-      clearInterval(timer);
-      popup.close();
-      setOAuthLoading(false);
-      setGoogleBtnLoading(false);
-      showError('Google Login ล้มเหลว: ' + e.data.error);
-    }
-  });
-}
-
-// ── รับ JWT Credential จาก Google One-Tap ──
-function handleGoogleCredential(response) {
-  setOAuthLoading(true);
-  const credential = response.credential;   // JWT token
-  processGoogleToken(credential, null);
-}
-
-// ── Decode JWT และ Login ──
-function processGoogleToken(jwtToken, preDecoded) {
-  try {
-    let payload;
-
-    if (preDecoded) {
-      payload = preDecoded;
-    } else {
-      // Decode JWT (ไม่ต้อง verify signature ฝั่ง client — Google verify แล้ว)
-      const base64Url = jwtToken.split('.')[1];
-      const base64    = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      payload = JSON.parse(atob(base64));
-    }
-
-    console.log('[OAuth] Google user:', payload.email, payload.name);
-
-    // ตรวจว่า token หมดอายุหรือยัง
-    if (payload.exp && payload.exp * 1000 < Date.now()) {
-      showError('Google token หมดอายุ กรุณา Login ใหม่');
-      setGoogleBtnLoading(false);
-      setOAuthLoading(false);
-      return;
-    }
-
-    // ตรวจ email domain (optional — กรองเฉพาะ domain โรงเรียน)
-    // const allowedDomain = 'school.ac.th';
-    // if (!payload.email.endsWith('@' + allowedDomain)) {
-    //   showError('อนุญาตเฉพาะ @' + allowedDomain + ' เท่านั้น');
-    //   return;
-    // }
-
-    // สร้าง user session
-    const user = {
-      email:       payload.email,
-      name:        payload.name || payload.email,
-      picture:     payload.picture || '',
-      role:        resolveRole(payload.email),   // ดู role จาก config
-      loginMethod: 'google',
-      googleToken: jwtToken,
-    };
-
-    sessionStorage.setItem('user', JSON.stringify(user));
-    console.log('[OAuth] Login success → role:', user.role);
-
-    // Redirect ไป dashboard
-    window.location.href = 'dashboard.html';
-
-  } catch (err) {
-    console.error('[OAuth] processGoogleToken error:', err);
-    showError('ประมวลผล Google token ไม่สำเร็จ: ' + err.message);
-    setGoogleBtnLoading(false);
-    setOAuthLoading(false);
-  }
-}
-
-// ── กำหนด Role จาก Email ──
-function resolveRole(email) {
-  const roleMap = CONFIG.ROLE_MAP || {};
-
-  // normalize — lowercase + trim ป้องกัน typo ใน config
-  const norm = (email || '').trim().toLowerCase();
-
-  // ค้นหาแบบ case-insensitive
-  for (const [mapEmail, role] of Object.entries(roleMap)) {
-    if (mapEmail.trim().toLowerCase() === norm) {
-      console.log('[Role] ' + email + ' → ' + role + ' (matched "' + mapEmail + '")');
-      return role;
-    }
-  }
-
-  // log ชัดเจนเมื่อไม่เจอ — ดูใน Console เพื่อ debug
-  console.warn('[Role] "' + email + '" ไม่พบใน ROLE_MAP → role: viewer');
-  console.warn('[Role] ROLE_MAP ปัจจุบัน:', JSON.stringify(roleMap));
-  return 'viewer';   // default ปลอดภัย = viewer
-}
-
-// ════════════════════════════════════════════
-// Email / Password Login (ผ่าน Apps Script)
+// FaceAttend v2.3 Login (PATCHED)
+// Google OAuth สำเร็จแล้วต้องไปขอ token จาก Apps Script (loginGoogle)
 // ════════════════════════════════════════════
 
 const DEMO_ACCOUNTS = {
-  admin:   { email:'admin@school.ac.th',   password:'admin1234',   role:'admin',   name:'อาจารย์เอกศักดิ์ ปรีติประสงค์' },
+  admin:   { email:'admin@school.ac.th',   password:'admin1234',   role:'admin',   name:'ผู้ดูแลระบบ' },
   teacher: { email:'teacher@school.ac.th', password:'teacher1234', role:'teacher', name:'อาจารย์สมใจ ดีงาม' },
   viewer:  { email:'viewer@school.ac.th',  password:'viewer1234',  role:'viewer',  name:'ผู้ปกครอง ทดสอบ' },
 };
-
-async function doEmailLogin() {
-  const email    = document.getElementById('emailInput').value.trim();
-  const password = document.getElementById('passwordInput').value;
-  const btn      = document.getElementById('loginBtnText');
-
-  if (!email || !password) { showError('กรุณากรอก Email และรหัสผ่าน'); return; }
-
-  btn.textContent = '⏳ กำลังตรวจสอบ...';
-  clearError();
-
-  try {
-    // ── ลอง Apps Script API ก่อน ──
-    if (CONFIG._hasRealAPI) {
-      try {
-        const res = await fetch(CONFIG.API_URL, {
-          method:  'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body:    JSON.stringify({ action:'login', email, password }),
-          mode:    'cors',
-        });
-        const data = await res.json();
-        if (data.success) {
-          const u = { ...data.data, loginMethod:'password' };
-          sessionStorage.setItem('user', JSON.stringify(u));
-          window.location.href = 'dashboard.html';
-          return;
-        } else {
-          throw new Error(data.error || 'Login failed');
-        }
-      } catch (apiErr) {
-        console.warn('[Login] API failed:', apiErr.message, '— trying demo accounts');
-      }
-    }
-
-    // ── Fallback: Demo accounts ──
-    await new Promise(r => setTimeout(r, 600));  // simulate delay
-    const found = Object.values(DEMO_ACCOUNTS)
-      .find(a => a.email === email && a.password === password);
-
-    if (found) {
-      sessionStorage.setItem('user', JSON.stringify({ ...found, loginMethod:'password' }));
-      window.location.href = 'dashboard.html';
-    } else {
-      showError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
-    }
-  } finally {
-    btn.textContent = '🔐 เข้าสู่ระบบ';
-  }
-}
-
-function fillDemo(role) {
-  const a = DEMO_ACCOUNTS[role];
-  document.getElementById('emailInput').value    = a.email;
-  document.getElementById('passwordInput').value = a.password;
-}
-
-// ════════════════════════════════════════════
-// UI Helpers
-// ════════════════════════════════════════════
 
 function showError(msg) {
   const box = document.getElementById('errorMsg');
@@ -496,9 +222,287 @@ function setOAuthLoading(show) {
   document.getElementById('oauthLoading').classList.toggle('show', show);
 }
 
+// ════════════════════════════════════════════
+// Google Identity Services
+// ════════════════════════════════════════════
+
+function initGoogleOAuth() {
+  const clientId = CONFIG.GOOGLE_CLIENT_ID;
+
+  if (!clientId || clientId.includes('YOUR_GOOGLE') || clientId.trim() === '') {
+    document.getElementById('setupBanner').classList.add('show');
+    document.getElementById('googleBtn').disabled = true;
+    document.getElementById('googleBtnText').textContent = 'Google OAuth ยังไม่ได้ตั้งค่า';
+    return;
+  }
+
+  document.getElementById('setupBanner').classList.remove('show');
+
+  if (typeof google === 'undefined' || !google.accounts) {
+    console.warn('GSI ยังโหลดไม่เสร็จ...');
+    setTimeout(initGoogleOAuth, 800);
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id: clientId,
+    callback: handleGoogleCredential,
+    auto_select: false,
+    cancel_on_tap_outside: true,
+    ux_mode: 'popup',
+    context: 'signin',
+  });
+
+  console.log('[OAuth] Google Identity Services พร้อมแล้ว ✅');
+}
+
+function startGoogleLogin() {
+  const clientId = CONFIG.GOOGLE_CLIENT_ID;
+
+  if (!clientId || clientId.includes('YOUR_GOOGLE')) {
+    showError('กรุณาตั้งค่า GOOGLE_CLIENT_ID ใน scripts/config.js ก่อน');
+    return;
+  }
+
+  setGoogleBtnLoading(true);
+
+  google.accounts.id.prompt((notification) => {
+    if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+      console.log('[OAuth] One-tap blocked → fallback popup');
+      openGooglePopup();
+    }
+  });
+}
+
+function openGooglePopup() {
+  const clientId = CONFIG.GOOGLE_CLIENT_ID;
+  const scope    = 'openid email profile';
+
+  const redirectUri =
+    window.location.origin +
+    window.location.pathname.replace('index.html','').replace(/\/$/,'/') +
+    'oauth2callback.html';
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'token id_token',
+    scope,
+    nonce: Math.random().toString(36).slice(2),
+    prompt: 'select_account',
+  });
+
+  const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+
+  const popup = window.open(
+    oauthUrl,
+    'googleOAuth',
+    'width=500,height=620,scrollbars=yes,resizable=yes,left=' +
+    (screen.width/2 - 250) + ',top=' + (screen.height/2 - 310)
+  );
+
+  if (!popup) {
+    showError('Browser บล็อก popup — กรุณาอนุญาต popup สำหรับเว็บนี้');
+    setGoogleBtnLoading(false);
+    return;
+  }
+
+  setOAuthLoading(true);
+
+  const timer = setInterval(() => {
+    if (popup.closed) {
+      clearInterval(timer);
+      setGoogleBtnLoading(false);
+      setOAuthLoading(false);
+    }
+  }, 500);
+
+  window.addEventListener('message', function onMsg(e) {
+    if (e.origin !== window.location.origin) return;
+
+    if (e.data?.type === 'GOOGLE_OAUTH_SUCCESS') {
+      window.removeEventListener('message', onMsg);
+      clearInterval(timer);
+      try { popup.close(); } catch(_) {}
+
+      setOAuthLoading(false);
+
+      processGoogleToken(e.data.credential || e.data.id_token, e.data.userInfo);
+    }
+
+    if (e.data?.type === 'GOOGLE_OAUTH_ERROR') {
+      window.removeEventListener('message', onMsg);
+      clearInterval(timer);
+      try { popup.close(); } catch(_) {}
+
+      setOAuthLoading(false);
+      setGoogleBtnLoading(false);
+
+      showError('Google Login ล้มเหลว: ' + e.data.error);
+    }
+  });
+}
+
+function handleGoogleCredential(response) {
+  setOAuthLoading(true);
+  const credential = response.credential;
+  processGoogleToken(credential, null);
+}
+
+// ════════════════════════════════════════════
+// ★ PATCHED: Google token → ขอ token ของ FaceAttend จาก Apps Script
+// ════════════════════════════════════════════
+
+async function processGoogleToken(jwtToken, preDecoded) {
+  try {
+    let payload;
+
+    if (preDecoded) {
+      payload = preDecoded;
+    } else {
+      const base64Url = jwtToken.split('.')[1];
+      const base64    = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      payload = JSON.parse(atob(base64));
+    }
+
+    console.log('[OAuth] Google user:', payload.email, payload.name);
+
+    if (!payload.email) {
+      showError('Google ไม่ได้ส่ง email กลับมา');
+      setGoogleBtnLoading(false);
+      setOAuthLoading(false);
+      return;
+    }
+
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      showError('Google token หมดอายุ กรุณา Login ใหม่');
+      setGoogleBtnLoading(false);
+      setOAuthLoading(false);
+      return;
+    }
+
+    if (!CONFIG._hasRealAPI) {
+      showError('ยังไม่ได้ตั้งค่า API_URL ใน scripts/config.js');
+      setGoogleBtnLoading(false);
+      setOAuthLoading(false);
+      return;
+    }
+
+    // ★ ขอ token จาก Apps Script
+    const apiRes = await fetch(CONFIG.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        action: 'loginGoogle',
+        email: payload.email
+      })
+    });
+
+    const apiData = await apiRes.json();
+
+    if (!apiData.success) {
+      showError(apiData.error || 'บัญชีนี้ไม่ได้รับอนุญาต');
+      setGoogleBtnLoading(false);
+      setOAuthLoading(false);
+      return;
+    }
+
+    const user = {
+      ...apiData.data,
+      picture: payload.picture || '',
+      loginMethod: 'google',
+      googleToken: jwtToken
+    };
+
+    sessionStorage.setItem('user', JSON.stringify(user));
+
+    console.log('[OAuth] FaceAttend token OK →', user.email, user.role);
+
+    window.location.href = 'dashboard.html';
+
+  } catch (err) {
+    console.error('[OAuth] processGoogleToken error:', err);
+    showError('ประมวลผล Google token ไม่สำเร็จ: ' + err.message);
+    setGoogleBtnLoading(false);
+    setOAuthLoading(false);
+  }
+}
+
+// ════════════════════════════════════════════
+// Email / Password Login
+// ════════════════════════════════════════════
+
+async function doEmailLogin() {
+  const email    = document.getElementById('emailInput').value.trim();
+  const password = document.getElementById('passwordInput').value;
+  const btn      = document.getElementById('loginBtnText');
+
+  if (!email || !password) {
+    showError('กรุณากรอก Email และรหัสผ่าน');
+    return;
+  }
+
+  btn.textContent = '⏳ กำลังตรวจสอบ...';
+  clearError();
+
+  try {
+    if (CONFIG._hasRealAPI) {
+      try {
+        const res = await fetch(CONFIG.API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action:'login', email, password }),
+          mode: 'cors'
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          const u = { ...data.data, loginMethod:'password' };
+          sessionStorage.setItem('user', JSON.stringify(u));
+          window.location.href = 'dashboard.html';
+          return;
+        } else {
+          throw new Error(data.error || 'Login failed');
+        }
+
+      } catch (apiErr) {
+        console.warn('[Login] API failed:', apiErr.message, '— fallback demo');
+      }
+    }
+
+    // Demo fallback
+    await new Promise(r => setTimeout(r, 600));
+
+    const found = Object.values(DEMO_ACCOUNTS)
+      .find(a => a.email === email && a.password === password);
+
+    if (found) {
+      sessionStorage.setItem('user', JSON.stringify({ ...found, loginMethod:'password', token:'DEMO_TOKEN' }));
+      window.location.href = 'dashboard.html';
+    } else {
+      showError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    }
+
+  } finally {
+    btn.textContent = '🔐 เข้าสู่ระบบ';
+  }
+}
+
+function fillDemo(role) {
+  const a = DEMO_ACCOUNTS[role];
+  document.getElementById('emailInput').value    = a.email;
+  document.getElementById('passwordInput').value = a.password;
+}
+
+// ════════════════════════════════════════════
+// Theme
+// ════════════════════════════════════════════
+
 function toggleTheme() {
   const root = document.documentElement;
   const isLight = root.getAttribute('data-theme') === 'light';
+
   if (isLight) {
     root.removeAttribute('data-theme');
     localStorage.setItem('theme','dark');
@@ -515,6 +519,7 @@ function toggleTheme() {
 // ════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
+
   // Theme
   if (localStorage.getItem('theme') === 'light') {
     document.documentElement.setAttribute('data-theme','light');
@@ -538,50 +543,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') doEmailLogin();
   });
 
-  // Hash token (redirect จาก oauth2callback.html)
-  const hash = window.location.hash;
-  if (hash.includes('id_token=') || hash.includes('access_token=')) {
-    handleHashToken(hash);
-  }
+  // ถ้า login ค้างไว้แล้ว → ไป dashboard เลย
+  try {
+    const u = JSON.parse(sessionStorage.getItem('user') || 'null');
+    if (u && u.token) {
+      console.log('[Session] user exists → redirect dashboard');
+      window.location.href = 'dashboard.html';
+    }
+  } catch(_) {}
 
-  // ── Role Debugger (เปิดด้วย ?debug=1) ──
-  if (window.location.search.includes('debug=1')) {
-    const panel = document.getElementById('roleDebugPanel');
-    panel.style.display = 'block';
-    const roleMap = CONFIG.ROLE_MAP || {};
-    const entries = Object.entries(roleMap);
-    const listEl  = document.getElementById('debugRoleMapList');
-    if (entries.length === 0) {
-      listEl.innerHTML = '<span style="color:var(--danger)">⚠️ ROLE_MAP ว่างเปล่า!</span>';
-    } else {
-      listEl.innerHTML = entries.map(([email, role]) => {
-        const colors = { admin:'#10b981', teacher:'#3b82f6', viewer:'#94a3b8' };
-        return `<div><span style="color:${colors[role]||'#fff'};font-weight:700">[${role}]</span> ${email}</div>`;
-      }).join('');
-    }
-    // แสดง email จาก session ถ้ามี
-    const u = sessionStorage.getItem('user');
-    if (u) {
-      const user = JSON.parse(u);
-      const resolvedRole = resolveRole(user.email);
-      listEl.innerHTML += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-        <span style="color:var(--warning)">⚡ Email ล่าสุด:</span> ${user.email}<br>
-        <span style="color:var(--warning)">⚡ Role ที่ได้:</span> ${resolvedRole}
-      </div>`;
-    }
-  }
 });
-
-// Handle token ที่อาจ redirect มาใน hash (implicit flow backup)
-function handleHashToken(hash) {
-  const params = new URLSearchParams(hash.slice(1));
-  const idToken = params.get('id_token');
-  if (idToken) {
-    setOAuthLoading(true);
-    window.history.replaceState({}, document.title, window.location.pathname);
-    processGoogleToken(idToken, null);
-  }
-}
 </script>
+
 </body>
 </html>
