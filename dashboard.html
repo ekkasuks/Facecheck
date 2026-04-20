@@ -115,7 +115,44 @@ document.addEventListener('DOMContentLoaded', () => {
   renderSidebar('dashboard');
   renderTopbar('แดชบอร์ด', 'ภาพรวมระบบเช็คชื่อ');
   initDashboard();
+
+  // ── แสดง banner เมื่อ email ไม่อยู่ใน ROLE_MAP ──
+  const warnEmail = sessionStorage.getItem('_roleWarning');
+  if (warnEmail) {
+    sessionStorage.removeItem('_roleWarning');
+    const roleMap = (typeof CONFIG !== 'undefined' && CONFIG.ROLE_MAP) ? CONFIG.ROLE_MAP : {};
+    const norm = warnEmail.trim().toLowerCase();
+    let inMap = false;
+    for (const k of Object.keys(roleMap)) {
+      if (k.trim().toLowerCase() === norm) { inMap = true; break; }
+    }
+    if (!inMap) showRoleNotInMapBanner(warnEmail);
+  }
 });
+
+function showRoleNotInMapBanner(email) {
+  const b = document.createElement('div');
+  b.id = 'roleWarnBanner';
+  b.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#1e1e2e;border:2px solid #f59e0b;border-radius:14px;padding:18px 22px;max-width:520px;width:93%;box-shadow:0 8px 36px rgba(0,0,0,.7);font-family:IBM Plex Sans Thai,sans-serif;font-size:13px;line-height:1.6';
+  b.innerHTML = `
+    <div style="font-weight:700;color:#f59e0b;margin-bottom:10px;font-size:15px">⚠️ Login สำเร็จ แต่ได้ Role = viewer เพราะ email ไม่ตรง</div>
+    <div style="color:#94a3b8;margin-bottom:6px">Google ใช้ email นี้ (คลิกเพื่อคัดลอก):</div>
+    <div onclick="navigator.clipboard.writeText('${email}').then(()=>{this.style.background='#052e16';this.style.borderColor='#10b981'})" title="คลิกเพื่อคัดลอก"
+      style="background:#0f0f1a;padding:10px 14px;border-radius:8px;font-family:monospace;color:#10b981;font-size:15px;margin-bottom:12px;word-break:break-all;cursor:pointer;border:1px solid #1f2937">
+      ${email} 📋
+    </div>
+    <div style="color:#94a3b8;margin-bottom:6px">เปิด <b>scripts/config.js</b> แล้วเพิ่มใน ROLE_MAP:</div>
+    <div onclick="navigator.clipboard.writeText("'${email}': 'admin',")" title="คลิกเพื่อคัดลอก"
+      style="background:#0f0f1a;padding:10px 14px;border-radius:8px;font-family:monospace;color:#a78bfa;font-size:13px;margin-bottom:14px;cursor:pointer;border:1px solid #1f2937">
+      '${email}': 'admin',  📋
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('roleWarnBanner').remove()" style="flex:1;padding:10px;background:#374151;color:#fff;border:none;border-radius:9px;cursor:pointer;font-size:13px;font-family:inherit">ปิด</button>
+      <button onclick="window.location.href='index.html'" style="flex:1;padding:10px;background:#4f46e5;color:#fff;border:none;border-radius:9px;cursor:pointer;font-size:13px;font-family:inherit">Login ใหม่</button>
+    </div>
+  `;
+  document.body.appendChild(b);
+}
 
 function setRange(range, btn) {
   currentRange = range;
@@ -274,15 +311,15 @@ function renderTrend() {
 function renderClassRanking(students, records) {
   const roomMap = {};
   students.forEach(s => {
-    const key = `${s.class}/${s.room}`;
+    const key = `${s.classLevel || s.class || '?'}/${s.room}`;
     if (!roomMap[key]) roomMap[key] = { total: 0, present: 0 };
     roomMap[key].total++;
   });
 
   records.forEach(r => {
-    const s = students.find(st => st.id === r.studentId);
+    const s = students.find(st => (st.id === r.studentId || st.studentId === r.studentId));
     if (!s) return;
-    const key = `${s.class}/${s.room}`;
+    const key = `${s.classLevel || s.class || '?'}/${s.room}`;
     if (roomMap[key] && r.status === 'present') roomMap[key].present++;
   });
 
@@ -314,7 +351,7 @@ function renderRecentCheckins(records) {
       <div class="recent-item">
         <div class="recent-time">${r.time}</div>
         <div class="avatar-initials avatar" style="font-size:12px;background:linear-gradient(135deg,#4f46e5,#10b981)">${r.studentName.slice(0,2)}</div>
-        <div class="recent-name">${r.studentName}<span class="text-muted text-sm"> · ${r.class}/${r.room}</span></div>
+        <div class="recent-name">${r.studentName}<span class="text-muted text-sm"> · ${r.classLevel || r.class || ''}/${r.room}</span></div>
         <span class="badge ${s.badge}">${s.icon} ${s.label}</span>
         <span style="font-size:11px;color:var(--text-muted)">${r.method === 'face' ? '📷' : '✍️'}</span>
       </div>
