@@ -135,9 +135,12 @@ function renderSidebar(activePage) {
     ? `<img src="${user.picture}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--border-strong)" onerror="this.outerHTML='<div class=user-avatar avatar-initials>${initials}</div>'">`
     : `<div class="user-avatar avatar-initials">${initials}</div>`;
 
-  const roleLabel = (ROLE_LABELS && ROLE_LABELS[user.role])
-    ? ROLE_LABELS[user.role].label
-    : (user.role || 'ผู้ใช้');
+  const rl = (typeof ROLE_LABELS !== 'undefined' && ROLE_LABELS && ROLE_LABELS[user.role])
+    ? ROLE_LABELS[user.role]
+    : { label: user.role || 'ผู้ใช้', icon: '👤' };
+  const roleLabel = rl.label;
+  const roleColors = { admin:'#10b981', teacher:'#3b82f6', viewer:'#94a3b8' };
+  const roleColor  = roleColors[user.role] || '#94a3b8';
 
   const loginBadge = user.loginMethod === 'google'
     ? '<span style="font-size:9px;background:rgba(66,133,244,.2);color:#60a5fa;padding:1px 5px;border-radius:4px;margin-left:4px">Google</span>'
@@ -168,7 +171,7 @@ function renderSidebar(activePage) {
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px">${user.name || user.email}</span>
             ${loginBadge}
           </div>
-          <div class="user-role">${roleLabel} · ออกจากระบบ</div>
+          <div class="user-role"><span style="color:${roleColor};font-weight:700">${roleLabel}</span> · ออกจากระบบ</div>
         </div>
       </div>
     </div>
@@ -187,6 +190,11 @@ function renderTopbar(title, subtitle = '') {
   const dateStr = now.toLocaleDateString('th-TH', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
   const timeStr = now.toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit' });
 
+  const u = getCurrentUser();
+  const roleColors2 = { admin:'#10b981', teacher:'#3b82f6', viewer:'#94a3b8' };
+  const roleIcons2  = { admin:'👑', teacher:'👨‍🏫', viewer:'👁️' };
+  const roleBadge = u ? `<span style="padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${(roleColors2[u.role]||'#94a3b8')}22;color:${roleColors2[u.role]||'#94a3b8'};border:1px solid ${(roleColors2[u.role]||'#94a3b8')}44">${roleIcons2[u.role]||'👤'} ${(typeof ROLE_LABELS!=='undefined'&&ROLE_LABELS[u.role])?ROLE_LABELS[u.role].label:u.role}</span>` : '';
+
   topbar.innerHTML = `
     <button class="btn-icon" id="menuBtnMobile" onclick="document.getElementById('sidebar').classList.toggle('open')"
       style="display:none">☰</button>
@@ -195,6 +203,7 @@ function renderTopbar(title, subtitle = '') {
       ${subtitle ? `<div class="topbar-meta" style="font-size:12px;color:var(--text-muted)">${subtitle}</div>` : ''}
     </div>
     <div style="flex:1"></div>
+    ${roleBadge}
     <div class="topbar-meta" id="topbarClock" style="font-size:12px">${dateStr} · ${timeStr}</div>
     <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
   `;
@@ -266,14 +275,9 @@ function getDateRange(type) {
 }
 
 // ════════════════════════════════════════════
-// Role Labels
+// Role Labels (defined in config.js — skip redeclaration)
 // ════════════════════════════════════════════
-
-const ROLE_LABELS = {
-  admin:   { label:'ผู้ดูแลระบบ',    icon:'👑' },
-  teacher: { label:'ครูผู้สอน',      icon:'👨‍🏫' },
-  viewer:  { label:'ผู้สังเกตการณ์', icon:'👁️' },
-};
+// ROLE_LABELS is already declared in config.js
 
 // ════════════════════════════════════════════
 // Auto-init on page load
