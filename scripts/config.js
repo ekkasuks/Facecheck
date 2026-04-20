@@ -46,12 +46,13 @@ const CONFIG = {
   //  - Gmail จะเป็น @gmail.com เสมอ (ไม่ใช่ @school.ac.th)
   // ══════════════════════════════════════════
   ROLE_MAP: {
-    // ★ แก้ email ด้านล่างให้เป็น Gmail จริงของแต่ละคน ★
+    // ★ ใส่ Gmail จริงที่ใช้ Login กับ Google ★
+    // วิธีตรวจ: เปิด gmail.com → ดู email มุมขวาบน
 
-    'ekkasuks@esanpt1.go.th':  'admin',    // ← อาจารย์เอกศักดิ์ (แก้ตรงนี้)
-
-    // ตัวอย่าง (ถ้า Gmail คือ ekasak.p@gmail.com):
-    // 'ekasak.p@gmail.com':      'admin',
+    // อาจารย์เอกศักดิ์ — ใส่ทั้ง 2 email เพื่อความแน่ใจ
+    'ekkasuks@esanpt1.go.th':  'admin',
+    // ★★★ เพิ่ม Gmail จริงของอาจารย์ตรงนี้ด้วย ★★★
+    'ekkasuks@gmail.com@gmail.com': 'admin',
 
     // ครูคนอื่นๆ (เพิ่มได้เรื่อยๆ):
     // 'teacher1@gmail.com':      'teacher',
@@ -115,12 +116,24 @@ const SEED_STUDENTS = [
 
 function lsGetStudents() {
   const raw = localStorage.getItem('fa_students');
+  let students;
   if (raw) {
-    try { return JSON.parse(raw); } catch(_) {}
+    try { students = JSON.parse(raw); } catch(_) {}
   }
-  // seed ครั้งแรก
-  localStorage.setItem('fa_students', JSON.stringify(SEED_STUDENTS));
-  return SEED_STUDENTS;
+  if (!students) {
+    students = JSON.parse(JSON.stringify(SEED_STUDENTS));
+    localStorage.setItem('fa_students', JSON.stringify(students));
+  }
+  // ── normalize field names (รองรับทั้ง Apps Script และ local seed) ──
+  return students.map(s => ({
+    ...s,
+    // Apps Script ใช้ 'studentId', local ใช้ 'id' → normalize ให้มีทั้งคู่
+    id:        s.id        || s.studentId || '',
+    studentId: s.studentId || s.id        || '',
+    // Apps Script ใช้ 'classLevel', attendance record ก็ใช้ 'classLevel'
+    classLevel: s.classLevel || s['class'] || '',
+    class:      s['class']   || s.classLevel || '',
+  }));
 }
 
 function lsSaveStudents(arr) {
@@ -157,11 +170,14 @@ const STATUS_LABELS = {
   leave:   { label:'ลา',     badge:'badge-blue',   icon:'📝' },
 };
 
-const ROLE_LABELS = {
-  admin:   { label:'ผู้ดูแลระบบ',    icon:'👑' },
-  teacher: { label:'ครูผู้สอน',      icon:'👨‍🏫' },
-  viewer:  { label:'ผู้สังเกตการณ์', icon:'👁️' },
-};
+// ── Role Labels (safe re-declaration guard) ──
+if (typeof ROLE_LABELS === 'undefined') {
+  var ROLE_LABELS = {
+    admin:   { label:'ผู้ดูแลระบบ',    icon:'👑' },
+    teacher: { label:'ครูผู้สอน',      icon:'👨‍🏫' },
+    viewer:  { label:'ผู้สังเกตการณ์', icon:'👁️' },
+  };
+}
 
 function getDateRange(type) {
   const now   = new Date();
