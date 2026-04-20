@@ -371,6 +371,12 @@ function processGoogleToken(jwtToken, preDecoded) {
     sessionStorage.setItem('user', JSON.stringify(user));
     console.log('[OAuth] Login success → role:', user.role);
 
+    // แสดง banner ถ้า email ไม่อยู่ใน ROLE_MAP (จะ redirect หลัง 5 วิ)
+    if (user.role === 'viewer') {
+      // ไปหน้า dashboard ก่อน แล้วค่อยแสดง warning ที่นั่น
+      sessionStorage.setItem('_roleWarning', user.email);
+    }
+
     // Redirect ไป dashboard
     window.location.href = 'dashboard.html';
 
@@ -385,22 +391,45 @@ function processGoogleToken(jwtToken, preDecoded) {
 // ── กำหนด Role จาก Email ──
 function resolveRole(email) {
   const roleMap = CONFIG.ROLE_MAP || {};
-
-  // normalize — lowercase + trim ป้องกัน typo ใน config
   const norm = (email || '').trim().toLowerCase();
 
-  // ค้นหาแบบ case-insensitive
   for (const [mapEmail, role] of Object.entries(roleMap)) {
     if (mapEmail.trim().toLowerCase() === norm) {
-      console.log('[Role] ' + email + ' → ' + role + ' (matched "' + mapEmail + '")');
+      console.log('[Role] ' + email + ' → ' + role);
       return role;
     }
   }
 
-  // log ชัดเจนเมื่อไม่เจอ — ดูใน Console เพื่อ debug
-  console.warn('[Role] "' + email + '" ไม่พบใน ROLE_MAP → role: viewer');
-  console.warn('[Role] ROLE_MAP ปัจจุบัน:', JSON.stringify(roleMap));
-  return 'viewer';   // default ปลอดภัย = viewer
+  console.warn('[Role] "' + email + '" ไม่พบใน ROLE_MAP → viewer');
+  console.warn('[Role] ★ เพิ่ม "' + norm + '": "admin" ใน ROLE_MAP ใน config.js');
+  return 'viewer';
+}
+
+// ── แสดง Banner เมื่อ email ไม่อยู่ใน ROLE_MAP ──
+function showRoleWarningIfNeeded(email, role) {
+  if (role !== 'viewer') return;
+  // ตรวจว่า email นี้อยู่ใน ROLE_MAP จริงหรือไม่
+  const roleMap = CONFIG.ROLE_MAP || {};
+  const norm = email.trim().toLowerCase();
+  for (const k of Object.keys(roleMap)) {
+    if (k.trim().toLowerCase() === norm) return; // มีอยู่แล้ว = viewer จริง
+  }
+  // ไม่อยู่ใน map → แสดง banner
+  const banner = document.createElement('div');
+  banner.id = 'roleWarningBanner';
+  banner.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#1e1e2e;border:2px solid #f59e0b;border-radius:12px;padding:16px 20px;max-width:500px;width:92%;box-shadow:0 8px 32px rgba(0,0,0,.6);font-size:13px;font-family:IBM Plex Sans Thai,sans-serif';
+  banner.innerHTML = `
+    <div style="font-weight:700;color:#f59e0b;margin-bottom:8px">⚠️ Email นี้ยังไม่ได้กำหนดสิทธิ์ Admin</div>
+    <div style="color:#94a3b8;margin-bottom:6px">Google Login ใช้ email นี้ (คลิกเพื่อคัดลอก):</div>
+    <div onclick="navigator.clipboard.writeText('${email}').then(()=>this.style.borderColor='#10b981')" style="background:#0f0f1a;padding:10px 14px;border-radius:8px;font-family:monospace;color:#10b981;font-size:14px;margin-bottom:12px;word-break:break-all;cursor:pointer;border:1px solid #333">${email} 📋</div>
+    <div style="color:#94a3b8;margin-bottom:6px">เปิด <code style="background:rgba(255,255,255,.1);padding:1px 5px;border-radius:4px">scripts/config.js</code> แล้วเพิ่มบรรทัดนี้ใน ROLE_MAP:</div>
+    <div onclick="navigator.clipboard.writeText("'${email}': 'admin',")" style="background:#0f0f1a;padding:10px 14px;border-radius:8px;font-family:monospace;color:#a78bfa;font-size:12px;margin-bottom:14px;cursor:pointer;border:1px solid #333">'${email}': 'admin',  📋</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('roleWarningBanner').remove()" style="flex:1;padding:9px;background:#374151;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">ปิด</button>
+      <button onclick="window.location.href='index.html'" style="flex:1;padding:9px;background:#4f46e5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">Login ใหม่</button>
+    </div>
+  `;
+  document.body.appendChild(banner);
 }
 
 // ════════════════════════════════════════════
