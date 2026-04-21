@@ -416,13 +416,13 @@ function countFPS() {
 function processCheckIn(studentId, confidence, method) {
   const now = Date.now();
   if (cooldowns[studentId] && now - cooldowns[studentId] < COOLDOWN) {
-    const s = allStudents.find(st => st.id === studentId);
+    const s = allStudents.find(st => (st.id === studentId || st.studentId === studentId));
     if (s) showDuplicateCard(s);
     return;
   }
   cooldowns[studentId] = now;
 
-  const student = allStudents.find(s => s.id === studentId);
+  const student = allStudents.find(s => (s.id === studentId || s.studentId === studentId));
   if (!student) return;
 
   const nowDate = new Date();
@@ -437,7 +437,7 @@ function processCheckIn(studentId, confidence, method) {
     date: dateStr, time: timeStr,
     studentId,
     studentName: `${student.prefix}${student.firstName} ${student.lastName}`,
-    class: student.class, room: student.room,
+    classLevel: student.classLevel || student.class || '', class: student.classLevel || student.class || '', room: student.room,
     status, method, deviceId: 'DEVICE-01', note: ''
   };
 
@@ -468,7 +468,7 @@ function showCheckInCard(student, status, conf, time) {
       <div class="r-avatar" style="background:${grad[status]}">${initials}</div>
       <div style="flex:1;min-width:0">
         <div class="r-name">${student.prefix}${student.firstName} ${student.lastName}</div>
-        <div class="r-meta">ชั้น ${student.class}/${student.room} · เลขที่ ${student.no}</div>
+        <div class="r-meta">ชั้น ${student.classLevel||student.class||''}/${student.room} · เลขที่ ${student.no||student.number||''}</div>
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
@@ -486,7 +486,7 @@ function showCheckInCard(student, status, conf, time) {
 
 function showDuplicateCard(student) {
   const card = document.getElementById('resultCard');
-  const last = todayRecs.filter(r => r.studentId === student.id).slice(-1)[0];
+  const last = todayRecs.filter(r => r.studentId === (student.id||student.studentId)).slice(-1)[0];
   card.className = 'result-card rc-dup';
   card.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px">
@@ -512,7 +512,7 @@ function renderToday() {
       <span class="badge ${s.badge}" style="min-width:46px;justify-content:center;font-size:11px">${s.icon}</span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.studentName}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${r.class}/${r.room}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${r.classLevel||r.class||''}/${r.room}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div style="font-size:12px;font-weight:600">${r.time}</div>
@@ -531,7 +531,7 @@ function speakName(student, status) {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const msg = status === 'present'
-    ? `ยินดีต้อนรับ ${student.prefix}${student.firstName} ชั้น ${student.class} ห้อง ${student.room}`
+    ? `ยินดีต้อนรับ ${student.prefix}${student.firstName} ชั้น ${student.classLevel||student.class||''} ห้อง ${student.room}`
     : `${student.prefix}${student.firstName} มาสาย`;
   const u = new SpeechSynthesisUtterance(msg);
   u.lang = 'th-TH'; u.rate = 0.95;
@@ -551,7 +551,7 @@ function loadManual() {
   const cls = document.getElementById('mClass').value;
   const room = document.getElementById('mRoom').value;
   if (!cls || !room) return;
-  const list = allStudents.filter(s => s.class === cls && s.room === room).sort((a,b) => a.no-b.no);
+  const list = allStudents.filter(s => (s.classLevel||s.class||'') === cls && s.room === room).sort((a,b) => (a.no||a.number||0)-(b.no||b.number||0));
   mStatusMap = {};
   list.forEach(s => mStatusMap[s.id] = 'present');
   renderManualList(list);
@@ -611,7 +611,7 @@ function saveManual() {
     const i = all.findIndex(r => r.studentId===id && r.date===dateStr);
     if (i>=0) all.splice(i,1);
     all.push({ id:`M${Date.now()}${id}`, date:dateStr, time:timeStr, studentId:id,
-      studentName:`${s.prefix}${s.firstName} ${s.lastName}`, class:cls, room,
+      studentName:`${s.prefix}${s.firstName} ${s.lastName}`, classLevel:cls, class:cls, room,
       status, method:'manual', deviceId:'MANUAL', note:'' });
     count++;
   });
