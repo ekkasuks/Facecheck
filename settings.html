@@ -287,6 +287,21 @@ const mockUsers = [
 document.addEventListener('DOMContentLoaded', () => {
   renderSidebar('settings');
   renderTopbar('ตั้งค่าระบบ', 'Configuration & Management');
+
+  // ── Role-based: ซ่อนเมนูที่ viewer/teacher ไม่ควรเห็น ──
+  const user = getCurrentUser();
+  if (user && user.role !== 'admin') {
+    // ซ่อน Users Tab และ API Tab สำหรับ non-admin
+    document.querySelectorAll('[onclick*="users"],[onclick*="api"]').forEach(el => {
+      el.style.display = 'none';
+    });
+    // แสดง banner
+    const banner = document.createElement('div');
+    banner.style.cssText = 'background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:10px';
+    banner.innerHTML = `<span style="font-size:18px">ℹ️</span><div>คุณเข้าถึงได้เฉพาะการตั้งค่าพื้นฐาน เนื่องจาก Role: <b>${user.role}</b><br><span style="color:var(--text-muted)">ติดต่อผู้ดูแลระบบเพื่อเปลี่ยน Role</span></div>`;
+    document.querySelector('.page-content').insertBefore(banner, document.querySelector('.settings-layout'));
+  }
+
   renderUsersTable();
   renderDataStats();
   // Sync dark toggle
