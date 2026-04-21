@@ -185,7 +185,7 @@ function loadDailyReport() {
 
   const dayRecords = attendance.filter(r => r.date === date);
   const studentMap = {};
-  students.forEach(s => { studentMap[s.id] = s; });
+  students.forEach(s => { const sid = s.id||s.studentId; studentMap[sid] = s; });
 
   const counts = { present: 0, late: 0, absent: 0, leave: 0 };
   dayRecords.forEach(r => counts[r.status] = (counts[r.status] || 0) + 1);
@@ -201,15 +201,15 @@ function loadDailyReport() {
   }).join('');
 
   document.getElementById('dailyTableBody').innerHTML = students.map(s => {
-    const rec = dayRecords.find(r => r.studentId === s.id);
+    const rec = dayRecords.find(r => r.studentId === (s.id||s.studentId));
     const row = rec ? rec : { status: 'absent', time: '—', method: '—', note: '' };
     const info = STATUS_LABELS[row.status];
     const trClass = row.status === 'absent' ? 'absent-highlight' : row.status === 'late' ? 'late-highlight' : '';
     return `
       <tr class="${trClass}">
-        <td>${s.no}</td>
+        <td>${s.no||s.number||0}</td>
         <td><span style="font-weight:600">${s.prefix}${s.firstName} ${s.lastName}</span></td>
-        <td>${s.class}/${s.room}</td>
+        <td>${s.classLevel||s.classLevel||s.class||""||''}/${s.room}</td>
         <td>${row.time}</td>
         <td><span class="badge ${info.badge}">${info.icon} ${info.label}</span></td>
         <td>${row.method === 'face' ? '📷 Face' : row.method === 'manual' ? '✍️ Manual' : '—'}</td>
@@ -229,7 +229,7 @@ function loadDailyReport() {
 function updateStatus(studentId, date, status) {
   const all = getAttendance();
   const idx = all.findIndex(r => r.studentId === studentId && r.date === date);
-  const student = students.find(s => s.id === studentId);
+  const student = students.find(s => (s.id||s.studentId) === studentId);
 
   if (idx >= 0) {
     all[idx].status = status;
@@ -240,7 +240,7 @@ function updateStatus(studentId, date, status) {
       date, time: '—',
       studentId,
       studentName: `${student.prefix}${student.firstName} ${student.lastName}`,
-      class: student.class, room: student.room,
+      classLevel: student.classLevel||student.class||'', class: student.classLevel||student.class||'', room: student.room,
       status, method: 'manual', deviceId: 'MANUAL', note: 'แก้ไขย้อนหลัง'
     });
   }
@@ -258,16 +258,16 @@ function loadClassReport() {
   const to = document.getElementById('classTo').value;
 
   const filtered = students.filter(s =>
-    (!cls || s.class === cls) && (!room || s.room === room)
+    (!cls || (s.classLevel||s.classLevel||s.class||""||'') === cls) && (!room || s.room === room)
   );
 
   const dateAttend = attendance.filter(r => {
     const d = r.date;
-    return (!from || d >= from) && (!to || d <= to) && filtered.some(s => s.id === r.studentId);
+    return (!from || d >= from) && (!to || d <= to) && filtered.some(s => (s.id||s.studentId) === r.studentId);
   });
 
   const summary = filtered.map(s => {
-    const recs = dateAttend.filter(r => r.studentId === s.id);
+    const recs = dateAttend.filter(r => r.studentId === (s.id||s.studentId));
     const p = recs.filter(r => r.status === 'present').length;
     const l = recs.filter(r => r.status === 'late').length;
     const a = recs.filter(r => r.status === 'absent').length;
@@ -289,7 +289,7 @@ function loadClassReport() {
           <tbody>
             ${summary.map(s => `
               <tr>
-                <td>${s.no}</td>
+                <td>${s.no||s.number||0}</td>
                 <td><span style="font-weight:600">${s.prefix}${s.firstName} ${s.lastName}</span></td>
                 <td><span style="color:var(--accent);font-weight:700">${s.p}</span></td>
                 <td><span style="color:var(--warning);font-weight:700">${s.l}</span></td>
@@ -313,14 +313,14 @@ function loadClassReport() {
 // ── Student Search ──────────────────────────────
 function renderStudentSearch() {
   const q = document.getElementById('studentSearchInput').value.toLowerCase();
-  const filtered = q ? students.filter(s => `${s.prefix}${s.firstName}${s.lastName}${s.id}`.toLowerCase().includes(q)) : students.slice(0, 8);
+  const filtered = q ? students.filter(s => `${s.prefix||''}${s.firstName||''}${s.lastName||''}${s.id||s.studentId||''}`.toLowerCase().includes(q)) : students.slice(0, 8);
 
   document.getElementById('studentSearchResults').innerHTML = filtered.map(s => `
     <div onclick="loadStudentReport('${s.id}')" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:10px" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
       <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;flex-shrink:0">${s.firstName[0]}${s.lastName[0]}</div>
       <div>
         <div style="font-size:13px;font-weight:600">${s.prefix}${s.firstName} ${s.lastName}</div>
-        <div style="font-size:11px;color:var(--text-muted)">ชั้น ${s.class}/${s.room}</div>
+        <div style="font-size:11px;color:var(--text-muted)">ชั้น ${s.classLevel||s.classLevel||s.class||""||''}/${s.room}</div>
       </div>
     </div>
   `).join('');
@@ -344,7 +344,7 @@ function loadStudentReport(id) {
       <div class="student-report-avatar">${initials}</div>
       <div style="flex:1">
         <div style="font-size:22px;font-weight:800">${s.prefix}${s.firstName} ${s.lastName}</div>
-        <div style="color:var(--text-muted);margin-top:4px">ชั้น ${s.class}/${s.room} · เลขที่ ${s.no} · รหัส ${s.id}</div>
+        <div style="color:var(--text-muted);margin-top:4px">ชั้น ${s.classLevel||s.classLevel||s.class||""||''}/${s.room} · เลขที่ ${s.no||s.number||0||s.number||''} · รหัส ${s.id||s.studentId}</div>
         <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">
           <span class="badge badge-green">✅ มาเรียน ${p}</span>
           <span class="badge badge-yellow">⏰ สาย ${l}</span>
@@ -404,14 +404,14 @@ function loadSummaryReport() {
   // By class
   const classStats = {};
   students.forEach(s => {
-    const key = `${s.class}/${s.room}`;
+    const key = `${s.classLevel||s.classLevel||s.class||""||''}/${s.room}`;
     if (!classStats[key]) classStats[key] = { total: 0, present: 0, late: 0, absent: 0 };
     classStats[key].total++;
   });
   filtered.forEach(r => {
     const s = students.find(st => st.id === r.studentId);
     if (!s) return;
-    const key = `${s.class}/${s.room}`;
+    const key = `${s.classLevel||s.classLevel||s.class||""||''}/${s.room}`;
     if (classStats[key]) {
       if (r.status === 'present') classStats[key].present++;
       else if (r.status === 'late') classStats[key].late++;
@@ -475,8 +475,8 @@ function exportDailyPDF() {
   doc.text(`รายงานการมาเรียน — ${new Date(date).toLocaleDateString('th-TH')}`, 105, 28, { align: 'center' });
 
   const rows = students.map(s => {
-    const rec = attendance.find(r => r.studentId === s.id && r.date === date);
-    return [s.no, `${s.prefix}${s.firstName} ${s.lastName}`, `${s.class}/${s.room}`, rec?.time || '—', STATUS_LABELS[rec?.status || 'absent'].label, rec?.method === 'face' ? 'Face' : rec?.method === 'manual' ? 'Manual' : '—'];
+    const rec = attendance.find(r => r.studentId === (s.id||s.studentId) && r.date === date);
+    return [s.no||s.number||0, `${s.prefix}${s.firstName} ${s.lastName}`, `${s.classLevel||s.class||""}/${s.room}`, rec?.time || '—', STATUS_LABELS[rec?.status || 'absent'].label, rec?.method === 'face' ? 'Face' : rec?.method === 'manual' ? 'Manual' : '—'];
   });
 
   doc.autoTable({
@@ -497,8 +497,8 @@ function exportDailyCSV() {
   const rows = [
     ['เลขที่','ชื่อ-สกุล','ชั้น','ห้อง','เวลา','สถานะ','วิธี'],
     ...students.map(s => {
-      const rec = attendance.find(r => r.studentId === s.id && r.date === date);
-      return [s.no, `${s.prefix}${s.firstName} ${s.lastName}`, s.class, s.room, rec?.time || '—', STATUS_LABELS[rec?.status || 'absent'].label, rec?.method || '—'];
+      const rec = attendance.find(r => r.studentId === (s.id||s.studentId) && r.date === date);
+      return [s.no||s.number||0, `${s.prefix}${s.firstName} ${s.lastName}`, s.classLevel||s.class||"", s.room, rec?.time || '—', STATUS_LABELS[rec?.status || 'absent'].label, rec?.method || '—'];
     })
   ];
   downloadCSV(rows, `รายงานวัน_${date}.csv`);
@@ -518,7 +518,7 @@ function exportStudentPDF(id) {
   doc.setFontSize(14);
   doc.text(`รายงานการมาเรียนรายบุคคล`, 105, 16, { align:'center' });
   doc.setFontSize(11);
-  doc.text(`${s.prefix}${s.firstName} ${s.lastName}  |  ชั้น ${s.class}/${s.room}  |  รหัส ${s.id}`, 105, 26, { align:'center' });
+  doc.text(`${s.prefix}${s.firstName} ${s.lastName}  |  ชั้น ${s.classLevel||s.classLevel||s.class||""||''}/${s.room}  |  รหัส ${s.id||s.studentId}`, 105, 26, { align:'center' });
 
   const p = records.filter(r => r.status === 'present').length;
   const total = records.length;
