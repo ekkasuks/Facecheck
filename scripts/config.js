@@ -52,7 +52,7 @@ const CONFIG = {
     // อาจารย์เอกศักดิ์ — ใส่ทั้ง 2 email เพื่อความแน่ใจ
     'ekkasuks@esanpt1.go.th':  'admin',
     // ★★★ เพิ่ม Gmail จริงของอาจารย์ตรงนี้ด้วย ★★★
-    'ekkasuks@gmail.com@gmail.com': 'admin',
+    // 'your.real.gmail@gmail.com': 'admin',
 
     // ครูคนอื่นๆ (เพิ่มได้เรื่อยๆ):
     // 'teacher1@gmail.com':      'teacher',
