@@ -7,11 +7,54 @@
 const API = (() => {
 
   // ── ดึง token จาก session ────────────────
+  // Google login จะไม่มี .token (GAS token)
+  // ให้ใช้ gasToken ถ้ามี ไม่งั้นใช้ .token ปกติ
   function getToken() {
     try {
       const u = sessionStorage.getItem('user');
-      return u ? (JSON.parse(u).token || '') : '';
+      if (!u) return '';
+      const user = JSON.parse(u);
+      // gasToken ถูกเซ็ตโดย syncGASToken() หลัง login Google
+      return user.gasToken || user.token || '';
     } catch(_) { return ''; }
+  }
+
+  // ── ขอ GAS token โดยใช้ email (สำหรับ Google login) ──
+  // เรียกครั้งเดียวหลัง login แล้ว cache ไว้ใน sessionStorage
+  async function syncGASToken() {
+    try {
+      const u = sessionStorage.getItem('user');
+      if (!u) return;
+      const user = JSON.parse(u);
+
+      // ถ้ามี gasToken อยู่แล้ว ไม่ต้องขอใหม่
+      if (user.gasToken) return;
+
+      // Google login: ขอ token จาก GAS โดย ping ก่อน
+      // GAS ใช้ token-based auth → ต้องใช้ email+password login
+      // แนวทาง: สร้าง session token พิเศษโดยใช้ email ที่ verified แล้ว
+      if (user.loginMethod === 'google' && CONFIG._hasRealAPI) {
+        const res = await fetch(CONFIG.API_URL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body:    JSON.stringify({
+            action: 'loginGoogle',
+            email:  user.email,
+            // ส่ง Google ID token เพื่อ verify
+            googleToken: user.googleToken || '',
+          }),
+          mode: 'cors',
+        });
+        const data = await res.json();
+        if (data.success && data.data && data.data.token) {
+          user.gasToken = data.data.token;
+          sessionStorage.setItem('user', JSON.stringify(user));
+          console.log('[API] GAS token obtained for Google user ✅');
+        }
+      }
+    } catch(e) {
+      console.warn('[API] syncGASToken failed:', e.message);
+    }
   }
 
   // ── POST ไปยัง Apps Script ───────────────
@@ -52,15 +95,23 @@ const API = (() => {
         if (filter.classLevel) gasParams.classLevel = filter.classLevel;
         if (filter.room)       gasParams.room       = filter.room;
         const result = await callGAS('getStudents', gasParams);
-        if (Array.isArray(result) && result.length > 0) {
-          lsSaveStudents(result);    // อัปเดต local cache
+        if (Array.isArray(result)) {
+          // GAS ตอบกลับมา (แม้จะ array ว่าง = Sheet ว่างจริง)
+          if (result.length > 0) {
+            lsSaveStudents(result);   // อัปเดต local cache
+          }
+          if (CONFIG.DEBUG) console.log('[API] getStudents from GAS:', result.length, 'records');
           return result;
         }
-      } catch(_) {}
+      } catch(err) {
+        // GAS ล้มเหลว (network, token ผิด ฯลฯ) → fallback local
+        console.warn('[API] getStudents GAS failed:', err.message, '→ using localStorage');
+      }
     }
     // Fallback → localStorage
     let local = lsGetStudents();
-    if (filter.classLevel) local = local.filter(s => s.classLevel === filter.classLevel);
+    if (CONFIG.DEBUG) console.log('[API] getStudents from localStorage:', local.length, 'records');
+    if (filter.classLevel) local = local.filter(s => (s.classLevel||s.class||'') === filter.classLevel);
     if (filter.room)       local = local.filter(s => String(s.room) === String(filter.room));
     return local;
   }
@@ -382,9 +433,11 @@ const API = (() => {
     }
   }
 
-  // Auto flush queue ตอนหน้าเว็บโหลด
+  // Auto flush queue + sync GAS token ตอนหน้าเว็บโหลด
   window.addEventListener('load', () => {
-    setTimeout(flushQueue, 3000);
+    syncGASToken().then(() => {
+      setTimeout(flushQueue, 2000);
+    });
   });
 
   // ════════════════════════════════════════
@@ -414,6 +467,7 @@ const API = (() => {
 
     // Utils
     flushQueue,
+    syncGASToken,
     normalizeStudent,
     gasToLocal,
   };
