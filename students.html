@@ -257,28 +257,42 @@ async function checkApiStatus() {
 }
 
 // ── Load Students ─────────────────────────
-async function loadStudents() {
+async function loadStudents(forceSheet = false) {
+  // ถ้า forceSheet = true → ล้าง localStorage ก่อน เพื่อบังคับดึงจาก Sheet
+  if (forceSheet) {
+    localStorage.removeItem('fa_students');
+    console.log('[Students] localStorage cleared → force reload from Sheet');
+  }
+
+  // sync GAS token ก่อน (สำคัญมากสำหรับ Google login)
+  if (typeof API !== 'undefined' && API.syncGASToken) {
+    await API.syncGASToken();
+  }
+
   students = await API.getStudents();
+  console.log('[Students] Loaded:', students.length, 'students, source:', CONFIG._hasRealAPI ? 'GAS+Local' : 'Local');
+
   // normalize field aliases
   students = students.map(s => ({
     ...s,
-    id:         s.id         || s.studentId || '',
-    studentId:  s.studentId  || s.id        || '',
-    classLevel: s.classLevel || s.class     || '',
-    class:      s.classLevel || s.class     || '',
-    no:         s.no         || s.number    || 1,
-    number:     s.number     || s.no        || 1,
-    imageUrl:   s.imageUrl   || s.faceImageUrl || '',
-    faceImageUrl: s.faceImageUrl || s.imageUrl || '',
+    id:           s.id           || s.studentId   || '',
+    studentId:    s.studentId    || s.id           || '',
+    classLevel:   s.classLevel   || s.class        || '',
+    class:        s.classLevel   || s.class        || '',
+    no:           s.no           || s.number       || 1,
+    number:       s.number       || s.no           || 1,
+    imageUrl:     s.imageUrl     || s.faceImageUrl || '',
+    faceImageUrl: s.faceImageUrl || s.imageUrl     || '',
   }));
   renderStudents();
 }
 
 async function syncFromSheet() {
   if (!CONFIG._hasRealAPI) { showToast('ยังไม่มี API URL', 'กรุณาตั้งค่าก่อน', 'warning'); return; }
-  showToast('กำลัง Sync...', 'โหลดจาก Google Sheet', 'info');
-  await loadStudents();
-  showToast('Sync สำเร็จ', `${students.length} คน`, 'success');
+  showToast('กำลัง Sync...', 'ล้าง Cache แล้วโหลดจาก Google Sheet', 'info');
+  // forceSheet=true → ล้าง localStorage ก่อนดึงจาก Sheet
+  await loadStudents(true);
+  showToast('Sync สำเร็จ', `พบ ${students.length} คนใน Google Sheet`, 'success');
 }
 
 // ── Filter & Render ───────────────────────
