@@ -287,26 +287,66 @@ const mockUsers = [
 document.addEventListener('DOMContentLoaded', () => {
   renderSidebar('settings');
   renderTopbar('ตั้งค่าระบบ', 'Configuration & Management');
-
-  // ── Role-based: ซ่อนเมนูที่ viewer/teacher ไม่ควรเห็น ──
-  const user = getCurrentUser();
-  if (user && user.role !== 'admin') {
-    // ซ่อน Users Tab และ API Tab สำหรับ non-admin
-    document.querySelectorAll('[onclick*="users"],[onclick*="api"]').forEach(el => {
-      el.style.display = 'none';
-    });
-    // แสดง banner
-    const banner = document.createElement('div');
-    banner.style.cssText = 'background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:10px';
-    banner.innerHTML = `<span style="font-size:18px">ℹ️</span><div>คุณเข้าถึงได้เฉพาะการตั้งค่าพื้นฐาน เนื่องจาก Role: <b>${user.role}</b><br><span style="color:var(--text-muted)">ติดต่อผู้ดูแลระบบเพื่อเปลี่ยน Role</span></div>`;
-    document.querySelector('.page-content').insertBefore(banner, document.querySelector('.settings-layout'));
-  }
-
+  loadSavedSettings();   // โหลดค่าที่บันทึกไว้
   renderUsersTable();
   renderDataStats();
-  // Sync dark toggle
   document.getElementById('darkModeToggle').checked = localStorage.getItem('theme') !== 'light';
 });
+
+// ── โหลดค่าที่บันทึกไว้ทั้งหมดใส่ form ──────
+function loadSavedSettings() {
+  const s = getSavedSettings();
+
+  // School
+  if (s.schoolName)    document.getElementById('schoolName').value   = s.schoolName;
+  if (s.schoolShort)   document.getElementById('schoolShort').value  = s.schoolShort;
+  if (s.schoolLogo)    document.getElementById('schoolLogo').value   = s.schoolLogo;
+  if (s.schoolAddress) document.getElementById('schoolAddress').value= s.schoolAddress;
+
+  // Attendance
+  if (s.lateTime)   document.getElementById('lateTime').value   = s.lateTime;
+  if (s.absentTime) document.getElementById('absentTime').value = s.absentTime;
+  if (s.dupMinutes) document.getElementById('dupMinutes').value = s.dupMinutes;
+  if (s.threshold) {
+    document.getElementById('threshold').value = s.threshold;
+    document.getElementById('thresholdVal').textContent = s.threshold;
+  }
+  if (s.saveUnknown !== undefined)
+    document.getElementById('saveUnknown').checked = s.saveUnknown;
+  if (s.enableTTS !== undefined)
+    document.getElementById('enableTTS').checked = s.enableTTS;
+
+  // API
+  if (s.apiUrl)        document.getElementById('apiUrl').value        = s.apiUrl        || CONFIG.API_URL;
+  if (s.googleClientId)document.getElementById('googleClientId').value= s.googleClientId|| CONFIG.GOOGLE_CLIENT_ID;
+
+  // Appearance
+  if (s.primaryColor) {
+    document.documentElement.style.setProperty('--primary', s.primaryColor);
+    document.querySelectorAll('.color-swatch').forEach(el => {
+      el.classList.toggle('selected', el.dataset.color === s.primaryColor);
+    });
+  }
+  if (s.showClock  !== undefined) document.getElementById('showClock').checked   = s.showClock;
+  if (s.enableAnim !== undefined) document.getElementById('enableAnim').checked  = s.enableAnim;
+
+  // Sync CONFIG object ด้วย
+  if (s.schoolName)  CONFIG.SCHOOL_NAME  = s.schoolName;
+  if (s.schoolShort) CONFIG.SCHOOL_SHORT = s.schoolShort;
+  if (s.lateTime)    CONFIG.LATE_TIME    = s.lateTime;
+  if (s.threshold)   CONFIG.FACE_MATCH_THRESHOLD = parseFloat(s.threshold);
+  if (s.apiUrl)      { CONFIG.API_URL = s.apiUrl; CONFIG._hasRealAPI = !s.apiUrl.includes('YOUR_SCRIPT'); }
+}
+
+function getSavedSettings() {
+  try { return JSON.parse(localStorage.getItem('fa_settings') || '{}'); } catch(_) { return {}; }
+}
+
+function saveSettings(patch) {
+  const s = getSavedSettings();
+  Object.assign(s, patch);
+  localStorage.setItem('fa_settings', JSON.stringify(s));
+}
 
 function switchSettingsTab(tab, el) {
   document.querySelectorAll('.settings-nav-item').forEach(i => i.classList.remove('active'));
@@ -341,20 +381,67 @@ function renderDataStats() {
 }
 
 function saveSchoolSettings() {
-  CONFIG.SCHOOL_NAME = document.getElementById('schoolName').value;
-  CONFIG.SCHOOL_SHORT = document.getElementById('schoolShort').value;
-  showToast('บันทึกสำเร็จ', 'ข้อมูลโรงเรียนอัปเดตแล้ว', 'success');
+  const name    = document.getElementById('schoolName').value.trim();
+  const short   = document.getElementById('schoolShort').value.trim();
+  const logo    = document.getElementById('schoolLogo').value.trim();
+  const address = document.getElementById('schoolAddress').value.trim();
+
+  CONFIG.SCHOOL_NAME  = name;
+  CONFIG.SCHOOL_SHORT = short;
+
+  saveSettings({ schoolName: name, schoolShort: short, schoolLogo: logo, schoolAddress: address });
+
+  // บันทึกลง GAS ด้วย (ถ้ามี API)
+  if (typeof API !== 'undefined' && CONFIG._hasRealAPI) {
+    API.syncGASToken && API.syncGASToken().then(() => {
+      ['schoolName','schoolLogoUrl','schoolAddress'].forEach(k => {
+        const v = k==='schoolName'?name : k==='schoolLogoUrl'?logo : address;
+        fetch(CONFIG.API_URL, {
+          method:'POST', headers:{'Content-Type':'text/plain'},
+          body: JSON.stringify({ action:'saveSetting', token: JSON.parse(sessionStorage.getItem('user')||'{}').gasToken||'', key:k, value:v }),
+          mode:'cors'
+        }).catch(()=>{});
+      });
+    });
+  }
+  showToast('บันทึกสำเร็จ ✅', 'ข้อมูลโรงเรียนอัปเดตแล้ว', 'success');
 }
 
 function saveAttendanceSettings() {
-  CONFIG.LATE_TIME = document.getElementById('lateTime').value;
-  CONFIG.FACE_MATCH_THRESHOLD = parseFloat(document.getElementById('threshold').value);
-  showToast('บันทึกสำเร็จ', 'ตั้งค่าการเช็คชื่ออัปเดตแล้ว', 'success');
+  const lateTime  = document.getElementById('lateTime').value;
+  const absentTime= document.getElementById('absentTime').value;
+  const dupMin    = document.getElementById('dupMinutes').value;
+  const threshold = document.getElementById('threshold').value;
+  const saveUnk   = document.getElementById('saveUnknown').checked;
+  const tts       = document.getElementById('enableTTS').checked;
+
+  CONFIG.LATE_TIME            = lateTime;
+  CONFIG.FACE_MATCH_THRESHOLD = parseFloat(threshold);
+  CONFIG.DUPLICATE_CHECK_MINUTES = parseInt(dupMin);
+
+  saveSettings({ lateTime, absentTime, dupMinutes: dupMin, threshold, saveUnknown: saveUnk, enableTTS: tts });
+
+  // sync GAS settings
+  if (typeof API !== 'undefined' && CONFIG._hasRealAPI) {
+    const token = (JSON.parse(sessionStorage.getItem('user')||'{}').gasToken||'');
+    [['lateTime',lateTime],['absentTime',absentTime],['checkDuplicateMinutes',dupMin],['faceThreshold',threshold]].forEach(([k,v]) => {
+      fetch(CONFIG.API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
+        body:JSON.stringify({action:'saveSetting',token,key:k,value:v}),mode:'cors'}).catch(()=>{});
+    });
+  }
+  showToast('บันทึกสำเร็จ ✅', 'ตั้งค่าการเช็คชื่ออัปเดตแล้ว', 'success');
 }
 
 function saveApiSettings() {
-  CONFIG.API_URL = document.getElementById('apiUrl').value;
-  showToast('บันทึก API URL', '', 'success');
+  const url      = document.getElementById('apiUrl').value.trim();
+  const clientId = document.getElementById('googleClientId').value.trim();
+
+  CONFIG.API_URL           = url;
+  CONFIG.GOOGLE_CLIENT_ID  = clientId;
+  CONFIG._hasRealAPI       = url.length > 0 && !url.includes('YOUR_SCRIPT');
+
+  saveSettings({ apiUrl: url, googleClientId: clientId });
+  showToast('บันทึก API URL ✅', 'reload หน้าเพื่อให้มีผล', 'success');
 }
 
 async function testAPIConnection() {
@@ -384,11 +471,22 @@ function selectColor(color, el) {
   document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
   el.classList.add('selected');
   document.documentElement.style.setProperty('--primary', color);
-  showToast('เปลี่ยนสีแล้ว', '', 'success');
+  // บันทึกทันที (ไม่ต้องกดปุ่มบันทึกอีก)
+  saveSettings({ primaryColor: color });
+  showToast('เปลี่ยนสีแล้ว ✅', 'บันทึกอัตโนมัติ', 'success');
 }
 
 function saveAppearance() {
-  showToast('บันทึกการตั้งค่าหน้าตา', '', 'success');
+  const selected = document.querySelector('.color-swatch.selected');
+  const color    = selected ? selected.dataset.color : null;
+  const showClock= document.getElementById('showClock').checked;
+  const enableAnim=document.getElementById('enableAnim').checked;
+
+  if (color) document.documentElement.style.setProperty('--primary', color);
+  document.body.style.setProperty('--transition-speed', enableAnim ? '0.2s' : '0s');
+
+  saveSettings({ primaryColor: color, showClock, enableAnim });
+  showToast('บันทึกการตั้งค่าหน้าตา ✅', '', 'success');
 }
 
 function openAddUserModal() {
