@@ -232,6 +232,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     allStudents = getStudents();
   }
 
+  // normalize id field ให้แน่ใจก่อนสร้าง FaceMatcher
+  allStudents = allStudents.map(s => ({
+    ...s,
+    id:        String(s.id || s.studentId || '').trim(),
+    studentId: String(s.studentId || s.id || '').trim(),
+  }));
+
+  console.log('[Attendance] โหลดนักเรียน:', allStudents.length, 'คน');
+
   todayRecs = getTodayAttendance();
   renderToday();
   updateInfoBar();
@@ -276,7 +285,14 @@ async function openCamera() {
     setLiveStatus(true);
 
     if (!demoMode) {
-      buildFaceMatcher();
+      try {
+        buildFaceMatcher();
+      } catch(matcherErr) {
+        // matcher error ไม่ควรปิดกล้อง — log แล้วเดินต่อ
+        console.error('[FaceMatcher] สร้างไม่ได้:', matcherErr.message);
+        showToast('Face Matcher Error', matcherErr.message, 'error', 6000);
+        faceMatcher = null;
+      }
       startDetect();
     } else {
       startDemo();
@@ -307,11 +323,38 @@ async function loadFaceModels() {
 
 function buildFaceMatcher() {
   const labeled = allStudents
-    .filter(s => Array.isArray(s.faceDescriptor) && s.faceDescriptor.length === 128)
-    .map(s => new faceapi.LabeledFaceDescriptors(s.id, [new Float32Array(s.faceDescriptor)]));
-  faceMatcher = labeled.length ? new faceapi.FaceMatcher(labeled, CONFIG.FACE_MATCH_THRESHOLD) : null;
+    .filter(s => {
+      // ตรวจ label ก่อน — ต้องเป็น string ไม่ว่างเปล่า
+      const label = String(s.id || s.studentId || '').trim();
+      if (!label) {
+        console.warn('[FaceMatcher] ข้ามนักเรียนที่ไม่มี id:', s);
+        return false;
+      }
+      // ตรวจ descriptor
+      if (!Array.isArray(s.faceDescriptor) || s.faceDescriptor.length !== 128) return false;
+      // ตรวจว่า descriptor เป็นตัวเลขจริง
+      const valid = s.faceDescriptor.every(v => typeof v === 'number' && isFinite(v));
+      if (!valid) {
+        console.warn('[FaceMatcher] faceDescriptor มีค่าไม่ถูกต้อง:', label);
+        return false;
+      }
+      return true;
+    })
+    .map(s => {
+      const label = String(s.id || s.studentId).trim();   // ← String() ป้องกัน crash
+      return new faceapi.LabeledFaceDescriptors(label, [new Float32Array(s.faceDescriptor)]);
+    });
+
+  faceMatcher = labeled.length
+    ? new faceapi.FaceMatcher(labeled, CONFIG.FACE_MATCH_THRESHOLD || 0.5)
+    : null;
+
   document.getElementById('infoDescriptors').textContent = `• ${labeled.length} ใบหน้า`;
-  if (!labeled.length) showToast('ไม่มีข้อมูลใบหน้า', 'กรุณา Extract Face ในหน้านักเรียน', 'warning');
+  console.log(`[FaceMatcher] สร้างเสร็จ: ${labeled.length}/${allStudents.length} คน`);
+
+  if (!labeled.length) {
+    showToast('ไม่มีข้อมูลใบหน้า', 'กรุณาถ่ายรูปนักเรียนในหน้า "จัดการนักเรียน" ก่อน', 'warning', 5000);
+  }
 }
 
 function startDetect() {
@@ -351,7 +394,8 @@ function startDemo() {
   demoLoop = setInterval(() => {
     if (Math.random() < 0.3 && pool.length) {
       const s = pool[i++ % pool.length];
-      processCheckIn(s.id, 78 + Math.random() * 18, 'face');
+      const sid = String(s.id || s.studentId || '').trim();
+      if (sid) processCheckIn(sid, 78 + Math.random() * 18, 'face');
     }
   }, 2800);
   document.getElementById('overlayMsg').textContent = '🎭 Demo Mode — จำลองการตรวจจับ';
