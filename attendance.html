@@ -199,6 +199,7 @@
 
 <script src="scripts/config.js"></script>
 <script src="scripts/auth.js"></script>
+<script src="scripts/api.js"></script>
 <script>
 requireAuth();
 
@@ -211,10 +212,26 @@ let cooldowns = {};
 let fpsFrameCount = 0, fpsLastTime = Date.now();
 const COOLDOWN = CONFIG.DUPLICATE_CHECK_MINUTES * 60 * 1000;
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   renderSidebar('attendance');
   renderTopbar('เช็คชื่อด้วยใบหน้า', 'Face Recognition Attendance');
-  allStudents = getStudents();
+
+  // sync GAS token ก่อน (Google login ต้องการ)
+  if (typeof API !== 'undefined' && API.syncGASToken) {
+    await API.syncGASToken();
+  }
+
+  // โหลดนักเรียนจาก GAS (พร้อม fallback localStorage)
+  try {
+    if (typeof API !== 'undefined') {
+      allStudents = await API.getStudents();
+    } else {
+      allStudents = getStudents();
+    }
+  } catch(_) {
+    allStudents = getStudents();
+  }
+
   todayRecs = getTodayAttendance();
   renderToday();
   updateInfoBar();
@@ -441,6 +458,7 @@ function processCheckIn(studentId, confidence, method) {
     status, method, deviceId: 'DEVICE-01', note: ''
   };
 
+  // 1) บันทึก localStorage ทันที
   const all = getAttendance();
   all.push(record);
   saveAttendance(all);
@@ -454,6 +472,69 @@ function processCheckIn(studentId, confidence, method) {
     `${STATUS_LABELS[status].label} · ${timeStr}`,
     status === 'present' ? 'face' : 'warning'
   );
+
+  // 2) ส่งไป Google Sheet (async — ไม่ block UI)
+  syncCheckInToGAS(studentId, method);
+}
+
+async function syncCheckInToGAS(studentId, method) {
+  if (!CONFIG._hasRealAPI) return;
+
+  try {
+    const user  = JSON.parse(sessionStorage.getItem('user') || '{}');
+    const token = user.gasToken || user.token || '';
+    if (!token) {
+      // ยังไม่มี token → ขอใหม่แล้วลองอีกครั้ง
+      if (typeof API !== 'undefined' && API.syncGASToken) {
+        await API.syncGASToken();
+        const u2 = JSON.parse(sessionStorage.getItem('user') || '{}');
+        if (!u2.gasToken && !u2.token) {
+          console.warn('[Attendance] ไม่มี GAS token — บันทึกเฉพาะ local');
+          return;
+        }
+      }
+    }
+
+    const freshToken = (JSON.parse(sessionStorage.getItem('user') || '{}').gasToken ||
+                        JSON.parse(sessionStorage.getItem('user') || '{}').token || '');
+
+    const res = await fetch(CONFIG.API_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body:    JSON.stringify({
+        action:    'checkAttendance',
+        token:     freshToken,
+        studentId,
+        method,
+        deviceId:  'WEB-DEVICE',
+      }),
+      mode: 'cors',
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      console.log('[Attendance] ✅ บันทึกลง Google Sheet:', data.data?.attendanceId);
+      showToast('✅ บันทึกลง Google Sheet', '', 'success', 2000);
+    } else {
+      console.error('[Attendance] GAS error:', data.error);
+      // ถ้า Unauthorized → ลอง sync token แล้ว retry
+      if (data.error && data.error.includes('Unauthorized')) {
+        if (typeof API !== 'undefined' && API.syncGASToken) {
+          await API.syncGASToken();
+          await syncCheckInToGAS(studentId, method);  // retry ครั้งเดียว
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Attendance] fetch error:', err.message);
+    // เก็บไว้ retry ทีหลังผ่าน offline queue
+    if (typeof API !== 'undefined' && API.flushQueue) {
+      const q = JSON.parse(localStorage.getItem('fa_sync_queue') || '[]');
+      q.push({ action: 'checkAttendance', params: { studentId, method, deviceId: 'WEB-DEVICE' }, ts: Date.now() });
+      localStorage.setItem('fa_sync_queue', JSON.stringify(q));
+      console.log('[Attendance] queued for retry');
+    }
+  }
 }
 
 function showCheckInCard(student, status, conf, time) {
@@ -617,10 +698,56 @@ function saveManual() {
   });
   saveAttendance(all);
   todayRecs = getTodayAttendance();
-  showToast('บันทึกสำเร็จ',`เช็คชื่อ ${count} คน · ชั้น ${cls}/${room}`,'success');
+  renderToday();
+  showToast('บันทึกสำเร็จ', `เช็คชื่อ ${count} คน · ชั้น ${cls}/${room}`, 'success');
   if (window.speechSynthesis) {
     const u = new SpeechSynthesisUtterance(`บันทึกการเช็คชื่อชั้น ${cls} ห้อง ${room} เรียบร้อยแล้ว`);
     u.lang = 'th-TH'; window.speechSynthesis.speak(u);
+  }
+
+  // ส่งทุก record ไป GAS (async)
+  if (CONFIG._hasRealAPI) {
+    syncManualToGAS(Object.entries(mStatusMap), cls, room);
+  }
+}
+
+async function syncManualToGAS(entries, cls, room) {
+  try {
+    const user  = JSON.parse(sessionStorage.getItem('user') || '{}');
+    let token   = user.gasToken || user.token || '';
+
+    // ถ้าไม่มี token → ขอใหม่
+    if (!token && typeof API !== 'undefined' && API.syncGASToken) {
+      await API.syncGASToken();
+      token = (JSON.parse(sessionStorage.getItem('user') || '{}').gasToken ||
+               JSON.parse(sessionStorage.getItem('user') || '{}').token || '');
+    }
+    if (!token) { console.warn('[Manual] ไม่มี token'); return; }
+
+    let ok = 0, fail = 0;
+    for (const [studentId, status] of entries) {
+      try {
+        const res  = await fetch(CONFIG.API_URL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body:    JSON.stringify({ action:'checkAttendance', token, studentId, method:'manual', deviceId:'MANUAL-WEB', note: status === 'absent' ? 'ขาดเรียน' : status === 'leave' ? 'ลา' : '' }),
+          mode:    'cors',
+        });
+        const data = await res.json();
+        if (data.success) ok++;
+        else { fail++; console.warn('[Manual] GAS:', data.error, 'studentId:', studentId); }
+      } catch(e) {
+        fail++;
+        // เก็บ queue
+        const q = JSON.parse(localStorage.getItem('fa_sync_queue') || '[]');
+        q.push({ action:'checkAttendance', params:{ studentId, method:'manual', deviceId:'MANUAL-WEB' }, ts:Date.now() });
+        localStorage.setItem('fa_sync_queue', JSON.stringify(q));
+      }
+    }
+    if (ok > 0) showToast(`✅ บันทึก Sheet ${ok} คน`, fail > 0 ? `(${fail} คนล้มเหลว)` : '', 'success', 3000);
+    else if (fail > 0) showToast('⚠️ บันทึก Sheet ไม่สำเร็จ', 'ดูรายละเอียดใน Console', 'warning');
+  } catch(err) {
+    console.error('[Manual] syncManualToGAS error:', err.message);
   }
 }
 </script>
