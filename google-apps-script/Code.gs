@@ -6,7 +6,7 @@
 
 // ─── ★ ตั้งค่าตรงนี้ก่อน ★ ─────────────────
 const SHEET_ID        = '17juO5S8dVehwyUdnhO99HLs8ef3rjfF37viRwwwapbc';
-const DRIVE_FOLDER_ID = '11bXSViZXvj28yHtWNgJpZXkE8CIioFtj6';
+const DRIVE_FOLDER_ID = '1bXSViZXvj28yHtWNgJpZXkE8CIioFtj6';
 const SECRET_KEY      = 'FaceAttend2024Secret';
 
 // ★ เปลี่ยนเป็น email จริงที่ใช้ Login Google ★
@@ -320,10 +320,15 @@ function doCheckAttendance(p) {
     }
   }
 
-  // Status
-  const [lh, lm] = lateTime.split(':').map(Number);
-  const [ch, cm] = time.split(':').map(Number);
-  const status = (ch > lh || (ch === lh && cm > lm)) ? 'late' : 'present';
+  // Status — ถ้า caller ส่ง status มาให้เลย (manual mode) ก็ใช้ค่านั้น
+  let status;
+  if (p.status && ['present','late','absent','leave'].includes(p.status)) {
+    status = p.status;   // manual override
+  } else {
+    const [lh, lm] = lateTime.split(':').map(Number);
+    const [ch, cm] = time.split(':').map(Number);
+    status = (ch > lh || (ch === lh && cm > lm)) ? 'late' : 'present';
+  }
 
   // Name
   const students = doGetStudents({});
