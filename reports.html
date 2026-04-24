@@ -8,11 +8,12 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles/main.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<!-- html2canvas สำหรับ render ภาษาไทยใน PDF -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-.report-tabs { display:flex; gap:0; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:4px; margin-bottom:24px; flex-wrap:wrap; gap:4px; }
+.report-tabs { display:flex; gap:4px; background:var(--bg-card2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:4px; margin-bottom:24px; flex-wrap:wrap; }
 .report-tab { padding:9px 18px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text-muted); transition:all .2s; border:none; background:none; font-family:inherit; white-space:nowrap; }
 .report-tab.active { background:var(--primary); color:white; }
 .report-tab:hover:not(.active) { color:var(--text); }
@@ -27,6 +28,9 @@
 .late-highlight td { background:rgba(245,158,11,.05) !important; }
 .student-report-header { display:flex; align-items:center; gap:20px; padding:20px; background:linear-gradient(135deg,rgba(79,70,229,.1),rgba(16,185,129,.05)); border-radius:var(--radius); border:1px solid var(--border); margin-bottom:20px; }
 .student-report-avatar { width:72px; height:72px; border-radius:16px; background:linear-gradient(135deg,var(--primary),var(--accent)); display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:700; color:white; flex-shrink:0; }
+.loading-overlay { display:flex;align-items:center;justify-content:center;padding:40px;color:var(--text-muted);flex-direction:column;gap:10px; }
+.spinner-sm { width:24px;height:24px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -43,7 +47,7 @@
         <button class="report-tab" onclick="switchTab('summary',this)">📊 สรุปรวม</button>
       </div>
 
-      <!-- Daily Report -->
+      <!-- ── Daily Report ── -->
       <div id="tab-daily" class="report-panel active">
         <div class="filter-bar">
           <div class="form-group">
@@ -64,12 +68,13 @@
             </div>
             <div id="dailySummaryBadges" style="display:flex;gap:8px;flex-wrap:wrap"></div>
           </div>
+          <div id="dailyLoading" class="loading-overlay" style="display:none">
+            <div class="spinner-sm"></div><div>กำลังโหลด...</div>
+          </div>
           <div class="attendance-table-wrapper">
             <table>
               <thead>
-                <tr>
-                  <th>เลขที่</th><th>ชื่อ-สกุล</th><th>ชั้น/ห้อง</th><th>เวลา</th><th>สถานะ</th><th>วิธี</th><th>หมายเหตุ</th><th>แก้ไข</th>
-                </tr>
+                <tr><th>เลขที่</th><th>ชื่อ-สกุล</th><th>ชั้น/ห้อง</th><th>เวลา</th><th>สถานะ</th><th>วิธี</th><th>หมายเหตุ</th><th>แก้ไข</th></tr>
               </thead>
               <tbody id="dailyTableBody"></tbody>
             </table>
@@ -77,7 +82,7 @@
         </div>
       </div>
 
-      <!-- Class Report -->
+      <!-- ── Class Report ── -->
       <div id="tab-class" class="report-panel">
         <div class="filter-bar">
           <div class="form-group">
@@ -116,7 +121,7 @@
         </div>
       </div>
 
-      <!-- Individual Report -->
+      <!-- ── Individual Report ── -->
       <div id="tab-student" class="report-panel">
         <div class="filter-bar">
           <div class="form-group" style="flex:1;min-width:240px">
@@ -128,7 +133,7 @@
         <div id="studentReportContent"></div>
       </div>
 
-      <!-- Summary Report -->
+      <!-- ── Summary Report ── -->
       <div id="tab-summary" class="report-panel">
         <div class="filter-bar">
           <div class="form-group">
@@ -151,25 +156,36 @@
 
 <script src="scripts/config.js"></script>
 <script src="scripts/auth.js"></script>
+<script src="scripts/api.js"></script>
 <script>
 requireAuth();
-let students = [], attendance = [];
 
-document.addEventListener('DOMContentLoaded', () => {
+// ── ตัวแปร state ──────────────────────────
+let _students   = [];
+let _attendance = [];
+
+// ── โหลดข้อมูลครั้งแรก ────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
   renderSidebar('reports');
   renderTopbar('รายงาน', 'Export และวิเคราะห์ข้อมูลการมาเรียน');
-  students = getStudents();
-  attendance = getAttendance();
 
-  // Set default dates
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('dailyDate').value = today;
-  document.getElementById('classTo').value = today;
+  document.getElementById('classTo').value   = today;
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
   document.getElementById('classFrom').value = weekAgo.toISOString().split('T')[0];
 
-  loadDailyReport();
-  renderStudentSearch();
+  try {
+    showToast('กำลังโหลดข้อมูล...', '', 'info', 2000);
+    [_students, _attendance] = await Promise.all([
+      API.getStudents(),
+      API.getAttendance(),
+    ]);
+    await loadDailyReport();
+    renderStudentSearch();
+  } catch(err) {
+    showToast('โหลดข้อมูลล้มเหลว', err.message, 'error');
+  }
 });
 
 function switchTab(tab, btn) {
@@ -179,319 +195,376 @@ function switchTab(tab, btn) {
   document.getElementById(`tab-${tab}`).classList.add('active');
 }
 
-// ── Daily Report ──────────────────────────────
-function loadDailyReport() {
+// ════════════════════════════════════════════
+// Daily Report
+// ════════════════════════════════════════════
+
+async function loadDailyReport() {
   const date = document.getElementById('dailyDate').value;
   if (!date) return;
 
-  const dayRecords = attendance.filter(r => r.date === date);
-  const studentMap = {};
-  students.forEach(s => { studentMap[s.id] = s; });
+  document.getElementById('dailyLoading').style.display = 'flex';
+  document.getElementById('dailyTableBody').innerHTML   = '';
 
-  const counts = { present: 0, late: 0, absent: 0, leave: 0 };
-  dayRecords.forEach(r => counts[r.status] = (counts[r.status] || 0) + 1);
+  try {
+    // ดึงข้อมูลล่าสุดจาก Sheet
+    const dayRecords = await API.getAttendance({ date });
+    const students   = _students.length ? _students : await API.getStudents();
 
-  const d = new Date(date);
-  const dateStr = d.toLocaleDateString('th-TH', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  document.getElementById('dailyTitle').textContent = `รายงานการมาเรียน — ${dateStr}`;
-  document.getElementById('dailySubtitle').textContent = `รวมทั้งหมด ${dayRecords.length} รายการ`;
+    const counts = { present:0, late:0, absent:0, leave:0 };
+    dayRecords.forEach(r => counts[r.status] = (counts[r.status]||0)+1);
 
-  document.getElementById('dailySummaryBadges').innerHTML = Object.entries(counts).map(([s, n]) => {
-    const info = STATUS_LABELS[s];
-    return `<span class="badge ${info.badge}">${info.icon} ${info.label} ${n}</span>`;
-  }).join('');
+    const d       = new Date(date + 'T00:00:00');
+    const dateStr = d.toLocaleDateString('th-TH', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    document.getElementById('dailyTitle').textContent    = `รายงานการมาเรียน — ${dateStr}`;
+    document.getElementById('dailySubtitle').textContent = `รวม ${dayRecords.length} รายการ | นักเรียนทั้งหมด ${students.length} คน`;
 
-  document.getElementById('dailyTableBody').innerHTML = students.map(s => {
-    const rec = dayRecords.find(r => r.studentId === s.id);
-    const row = rec ? rec : { status: 'absent', time: '—', method: '—', note: '' };
-    const info = STATUS_LABELS[row.status];
-    const trClass = row.status === 'absent' ? 'absent-highlight' : row.status === 'late' ? 'late-highlight' : '';
-    return `
-      <tr class="${trClass}">
-        <td>${s.no}</td>
-        <td><span style="font-weight:600">${s.prefix}${s.firstName} ${s.lastName}</span></td>
-        <td>${s.class}/${s.room}</td>
-        <td>${row.time}</td>
-        <td><span class="badge ${info.badge}">${info.icon} ${info.label}</span></td>
-        <td>${row.method === 'face' ? '📷 Face' : row.method === 'manual' ? '✍️ Manual' : '—'}</td>
-        <td style="color:var(--text-muted);font-size:13px">${row.note || ''}</td>
-        <td>
-          <select class="form-select" style="padding:4px 8px;font-size:12px;width:100px" onchange="updateStatus('${s.id}','${date}',this.value)">
-            ${['present','late','absent','leave'].map(st =>
-              `<option value="${st}" ${row.status===st?'selected':''}>${STATUS_LABELS[st].label}</option>`
-            ).join('')}
-          </select>
-        </td>
-      </tr>
-    `;
-  }).join('');
-}
+    document.getElementById('dailySummaryBadges').innerHTML = Object.entries(counts).map(([s,n]) => {
+      const info = STATUS_LABELS[s];
+      return `<span class="badge ${info.badge}">${info.icon} ${info.label} ${n}</span>`;
+    }).join('');
 
-function updateStatus(studentId, date, status) {
-  const all = getAttendance();
-  const idx = all.findIndex(r => r.studentId === studentId && r.date === date);
-  const student = students.find(s => s.id === studentId);
+    document.getElementById('dailyTableBody').innerHTML = students.map(s => {
+      const sid = s.studentId || s.id;
+      const rec = dayRecords.find(r => r.studentId === sid);
+      const row = rec || { status:'absent', time:'—', method:'—', note:'' };
+      const info = STATUS_LABELS[row.status] || STATUS_LABELS['absent'];
+      const trClass = row.status === 'absent' ? 'absent-highlight' : row.status === 'late' ? 'late-highlight' : '';
+      return `
+        <tr class="${trClass}">
+          <td>${s.number||s.no||''}</td>
+          <td><span style="font-weight:600">${s.prefix||''}${s.firstName||''} ${s.lastName||''}</span></td>
+          <td>${s.classLevel||s.class||''}/${s.room||''}</td>
+          <td>${row.time||'—'}</td>
+          <td><span class="badge ${info.badge}">${info.icon} ${info.label}</span></td>
+          <td>${row.method==='face'?'📷 Face':row.method==='manual'?'✍️ Manual':'—'}</td>
+          <td style="color:var(--text-muted);font-size:13px">${row.note||''}</td>
+          <td>
+            <select class="form-select" style="padding:4px 8px;font-size:12px;width:100px"
+              onchange="updateStatus('${sid}','${date}',this.value)">
+              ${['present','late','absent','leave'].map(st =>
+                `<option value="${st}" ${row.status===st?'selected':''}>${STATUS_LABELS[st].label}</option>`
+              ).join('')}
+            </select>
+          </td>
+        </tr>`;
+    }).join('');
 
-  if (idx >= 0) {
-    all[idx].status = status;
-    all[idx].method = 'manual';
-  } else {
-    all.push({
-      id: `M${Date.now()}`,
-      date, time: '—',
-      studentId,
-      studentName: `${student.prefix}${student.firstName} ${student.lastName}`,
-      class: student.class, room: student.room,
-      status, method: 'manual', deviceId: 'MANUAL', note: 'แก้ไขย้อนหลัง'
-    });
+  } catch(err) {
+    showToast('โหลดรายงานล้มเหลว', err.message, 'error');
+  } finally {
+    document.getElementById('dailyLoading').style.display = 'none';
   }
-
-  saveAttendance(all);
-  attendance = getAttendance();
-  showToast('แก้ไขสถานะ', `${student.prefix}${student.firstName} → ${STATUS_LABELS[status].label}`, 'success');
 }
 
-// ── Class Report ──────────────────────────────
-function loadClassReport() {
-  const cls = document.getElementById('classFilterClass').value;
+async function updateStatus(studentId, date, status) {
+  try {
+    await API.updateAttendanceStatus(studentId, date, status);
+    const s = _students.find(st => (st.studentId||st.id) === studentId);
+    const name = s ? `${s.prefix||''}${s.firstName||''}` : studentId;
+    showToast('แก้ไขสถานะ', `${name} → ${STATUS_LABELS[status].label}`, 'success');
+    // refresh
+    _attendance = await API.getAttendance();
+  } catch(err) {
+    showToast('แก้ไขล้มเหลว', err.message, 'error');
+  }
+}
+
+// ════════════════════════════════════════════
+// Class Report
+// ════════════════════════════════════════════
+
+async function loadClassReport() {
+  const cls  = document.getElementById('classFilterClass').value;
   const room = document.getElementById('classFilterRoom').value;
   const from = document.getElementById('classFrom').value;
-  const to = document.getElementById('classTo').value;
+  const to   = document.getElementById('classTo').value;
 
-  const filtered = students.filter(s =>
-    (!cls || s.class === cls) && (!room || s.room === room)
-  );
+  document.getElementById('classReportContent').innerHTML =
+    '<div class="loading-overlay"><div class="spinner-sm"></div><div>กำลังโหลด...</div></div>';
 
-  const dateAttend = attendance.filter(r => {
-    const d = r.date;
-    return (!from || d >= from) && (!to || d <= to) && filtered.some(s => s.id === r.studentId);
-  });
+  try {
+    const filter = {};
+    if (from) filter.dateFrom = from;
+    if (to)   filter.dateTo   = to;
+    if (cls)  filter.classLevel = cls;
+    if (room) filter.room = room;
 
-  const summary = filtered.map(s => {
-    const recs = dateAttend.filter(r => r.studentId === s.id);
-    const p = recs.filter(r => r.status === 'present').length;
-    const l = recs.filter(r => r.status === 'late').length;
-    const a = recs.filter(r => r.status === 'absent').length;
-    const lv = recs.filter(r => r.status === 'leave').length;
-    const total = recs.length;
-    const rate = total > 0 ? Math.round((p + l) / total * 100) : 0;
-    return { ...s, p, l, a, lv, total, rate };
-  });
+    const [students, attendance] = await Promise.all([
+      API.getStudents(cls ? { classLevel:cls, room } : {}),
+      API.getAttendance(filter),
+    ]);
 
-  document.getElementById('classReportContent').innerHTML = `
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">ชั้น ${cls || 'ทุกชั้น'}${room ? `/ห้อง${room}` : ''}</div>
-        <span class="badge badge-blue">${filtered.length} คน</span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>เลขที่</th><th>ชื่อ-สกุล</th><th>มาเรียน</th><th>สาย</th><th>ขาด</th><th>ลา</th><th>%มาเรียน</th></tr></thead>
-          <tbody>
-            ${summary.map(s => `
-              <tr>
-                <td>${s.no}</td>
-                <td><span style="font-weight:600">${s.prefix}${s.firstName} ${s.lastName}</span></td>
-                <td><span style="color:var(--accent);font-weight:700">${s.p}</span></td>
-                <td><span style="color:var(--warning);font-weight:700">${s.l}</span></td>
-                <td><span style="color:var(--danger);font-weight:700">${s.a}</span></td>
-                <td><span style="color:var(--info);font-weight:700">${s.lv}</span></td>
-                <td>
-                  <div style="display:flex;align-items:center;gap:8px">
-                    <div class="progress-bar" style="width:60px"><div class="progress-fill" style="width:${s.rate}%"></div></div>
-                    <span style="font-weight:700;color:${s.rate>=80?'var(--accent)':s.rate>=60?'var(--warning)':'var(--danger)'}">${s.rate}%</span>
-                  </div>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-}
+    const filtered = students.filter(s =>
+      (!cls  || s.classLevel === cls) &&
+      (!room || String(s.room) === String(room))
+    );
 
-// ── Student Search ──────────────────────────────
-function renderStudentSearch() {
-  const q = document.getElementById('studentSearchInput').value.toLowerCase();
-  const filtered = q ? students.filter(s => `${s.prefix}${s.firstName}${s.lastName}${s.id}`.toLowerCase().includes(q)) : students.slice(0, 8);
+    const summary = filtered.map(s => {
+      const sid  = s.studentId || s.id;
+      const recs = attendance.filter(r => r.studentId === sid);
+      const p    = recs.filter(r => r.status==='present').length;
+      const l    = recs.filter(r => r.status==='late').length;
+      const a    = recs.filter(r => r.status==='absent').length;
+      const lv   = recs.filter(r => r.status==='leave').length;
+      const total = recs.length;
+      const rate  = total > 0 ? Math.round((p+l)/total*100) : 0;
+      return { ...s, p, l, a, lv, total, rate };
+    });
 
-  document.getElementById('studentSearchResults').innerHTML = filtered.map(s => `
-    <div onclick="loadStudentReport('${s.id}')" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:10px" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
-      <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;flex-shrink:0">${s.firstName[0]}${s.lastName[0]}</div>
-      <div>
-        <div style="font-size:13px;font-weight:600">${s.prefix}${s.firstName} ${s.lastName}</div>
-        <div style="font-size:11px;color:var(--text-muted)">ชั้น ${s.class}/${s.room}</div>
-      </div>
-    </div>
-  `).join('');
-}
-
-function loadStudentReport(id) {
-  const s = students.find(st => st.id === id);
-  if (!s) return;
-
-  const records = attendance.filter(r => r.studentId === id).sort((a, b) => b.date.localeCompare(a.date));
-  const p = records.filter(r => r.status === 'present').length;
-  const l = records.filter(r => r.status === 'late').length;
-  const a = records.filter(r => r.status === 'absent').length;
-  const lv = records.filter(r => r.status === 'leave').length;
-  const total = records.length;
-  const rate = total > 0 ? Math.round((p / total) * 100) : 0;
-  const initials = `${s.firstName[0]}${s.lastName[0]}`;
-
-  document.getElementById('studentReportContent').innerHTML = `
-    <div class="student-report-header">
-      <div class="student-report-avatar">${initials}</div>
-      <div style="flex:1">
-        <div style="font-size:22px;font-weight:800">${s.prefix}${s.firstName} ${s.lastName}</div>
-        <div style="color:var(--text-muted);margin-top:4px">ชั้น ${s.class}/${s.room} · เลขที่ ${s.no} · รหัส ${s.id}</div>
-        <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">
-          <span class="badge badge-green">✅ มาเรียน ${p}</span>
-          <span class="badge badge-yellow">⏰ สาย ${l}</span>
-          <span class="badge badge-red">❌ ขาด ${a}</span>
-          <span class="badge badge-blue">📝 ลา ${lv}</span>
+    document.getElementById('classReportContent').innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">ชั้น ${cls||'ทุกชั้น'}${room?'/ห้อง'+room:''} (${from||'—'} ถึง ${to||'—'})</div>
+          <span class="badge badge-blue">${filtered.length} คน</span>
         </div>
-      </div>
-      <div style="text-align:center">
-        <div style="font-size:42px;font-weight:900;color:${rate>=80?'var(--accent)':rate>=60?'var(--warning)':'var(--danger)'}">${rate}%</div>
-        <div style="font-size:12px;color:var(--text-muted)">อัตราการมาเรียน</div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">ประวัติการมาเรียน (${records.length} รายการ)</div>
-        <button class="btn btn-ghost" onclick="exportStudentPDF('${id}')">📄 Export PDF</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>วันที่</th><th>วัน</th><th>เวลา</th><th>สถานะ</th><th>วิธี</th></tr></thead>
-          <tbody>
-            ${records.slice(0, 60).map(r => {
-              const d = new Date(r.date);
-              const dayName = d.toLocaleDateString('th-TH', { weekday: 'short' });
-              const info = STATUS_LABELS[r.status];
-              return `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>เลขที่</th><th>ชื่อ-สกุล</th><th>มาเรียน</th><th>สาย</th><th>ขาด</th><th>ลา</th><th>%มาเรียน</th></tr></thead>
+            <tbody>
+              ${summary.map(s => `
                 <tr>
-                  <td>${r.date}</td>
-                  <td style="color:var(--text-muted)">${dayName}</td>
-                  <td>${r.time}</td>
-                  <td><span class="badge ${info.badge}">${info.icon} ${info.label}</span></td>
-                  <td style="font-size:13px">${r.method === 'face' ? '📷 Face' : '✍️ Manual'}</td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-}
-
-// ── Summary Report ────────────────────────────
-function loadSummaryReport() {
-  const range = document.getElementById('summaryRange').value;
-  const { start, end } = getDateRange(range === 'all' ? 'month' : range);
-
-  const filtered = attendance.filter(r => {
-    const d = new Date(r.date);
-    return range === 'all' || (d >= start && d <= end);
-  });
-
-  const counts = { present: 0, late: 0, absent: 0, leave: 0 };
-  filtered.forEach(r => counts[r.status] = (counts[r.status] || 0) + 1);
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-
-  // By class
-  const classStats = {};
-  students.forEach(s => {
-    const key = `${s.class}/${s.room}`;
-    if (!classStats[key]) classStats[key] = { total: 0, present: 0, late: 0, absent: 0 };
-    classStats[key].total++;
-  });
-  filtered.forEach(r => {
-    const s = students.find(st => st.id === r.studentId);
-    if (!s) return;
-    const key = `${s.class}/${s.room}`;
-    if (classStats[key]) {
-      if (r.status === 'present') classStats[key].present++;
-      else if (r.status === 'late') classStats[key].late++;
-      else if (r.status === 'absent') classStats[key].absent++;
-    }
-  });
-
-  const classRows = Object.entries(classStats).sort((a, b) => {
-    const ra = a[1].total > 0 ? (a[1].present / a[1].total) : 0;
-    const rb = b[1].total > 0 ? (b[1].present / b[1].total) : 0;
-    return rb - ra;
-  });
-
-  document.getElementById('summaryContent').innerHTML = `
-    <div class="stats-grid" style="margin-bottom:20px">
-      ${Object.entries(counts).map(([s, n]) => {
-        const info = STATUS_LABELS[s];
-        return `<div class="stat-card"><div class="stat-value">${n}</div><div class="stat-label">${info.label}</div></div>`;
-      }).join('')}
-    </div>
-    <div class="card">
-      <div class="card-header"><div class="card-title">สรุปรายห้องเรียน</div></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>อันดับ</th><th>ห้องเรียน</th><th>มาเรียน</th><th>สาย</th><th>ขาด</th><th>%มาเรียน</th></tr></thead>
-          <tbody>
-            ${classRows.map(([name, s], i) => {
-              const rate = s.total > 0 ? Math.round((s.present + s.late) / (s.total * 5) * 100) : 0;
-              return `
-                <tr>
-                  <td><span style="font-size:20px;font-weight:900;color:${i<3?'var(--warning)':'var(--text-muted)'}">${i+1}</span></td>
-                  <td style="font-weight:600">${name}</td>
-                  <td style="color:var(--accent);font-weight:700">${s.present}</td>
-                  <td style="color:var(--warning);font-weight:700">${s.late}</td>
-                  <td style="color:var(--danger);font-weight:700">${s.absent}</td>
+                  <td>${s.number||s.no||''}</td>
+                  <td><span style="font-weight:600">${s.prefix||''}${s.firstName||''} ${s.lastName||''}</span></td>
+                  <td><span style="color:var(--accent);font-weight:700">${s.p}</span></td>
+                  <td><span style="color:var(--warning);font-weight:700">${s.l}</span></td>
+                  <td><span style="color:var(--danger);font-weight:700">${s.a}</span></td>
+                  <td><span style="color:var(--info);font-weight:700">${s.lv}</span></td>
                   <td>
                     <div style="display:flex;align-items:center;gap:8px">
-                      <div class="progress-bar" style="width:80px"><div class="progress-fill" style="width:${Math.min(rate,100)}%"></div></div>
-                      <span style="font-weight:800">${Math.min(rate,100)}%</span>
+                      <div class="progress-bar" style="width:60px"><div class="progress-fill" style="width:${s.rate}%"></div></div>
+                      <span style="font-weight:700;color:${s.rate>=80?'var(--accent)':s.rate>=60?'var(--warning)':'var(--danger)'}">${s.rate}%</span>
                     </div>
                   </td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  } catch(err) {
+    document.getElementById('classReportContent').innerHTML =
+      `<div style="padding:40px;text-align:center;color:var(--danger)">❌ ${err.message}</div>`;
+  }
 }
 
-// ═══════════════════════════════════════════════
-// PDF Export — ใช้ html2canvas แก้ปัญหาภาษาไทย
-// ═══════════════════════════════════════════════
+// ════════════════════════════════════════════
+// Student Search
+// ════════════════════════════════════════════
 
-// ── ฟังก์ชันหลัก: แปลง HTML element → PDF ──
-async function htmlToPDF(htmlContent, filename, title = '') {
-  showToast('กำลังสร้าง PDF...', 'กรุณารอสักครู่', 'info');
+function renderStudentSearch() {
+  const q        = document.getElementById('studentSearchInput').value.toLowerCase();
+  const filtered = q
+    ? _students.filter(s => `${s.prefix||''}${s.firstName||''}${s.lastName||''}${s.studentId||s.id||''}`.toLowerCase().includes(q))
+    : _students.slice(0, 8);
+
+  document.getElementById('studentSearchResults').innerHTML = filtered.map(s => {
+    const sid = s.studentId || s.id;
+    const fn  = s.firstName || '';
+    const ln  = s.lastName  || '';
+    return `
+      <div onclick="loadStudentReport('${sid}')"
+        style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:10px"
+        onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;flex-shrink:0">${fn[0]||''}${ln[0]||''}</div>
+        <div>
+          <div style="font-size:13px;font-weight:600">${s.prefix||''}${fn} ${ln}</div>
+          <div style="font-size:11px;color:var(--text-muted)">ชั้น ${s.classLevel||s.class||''}/${s.room||''}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function loadStudentReport(id) {
+  document.getElementById('studentReportContent').innerHTML =
+    '<div class="loading-overlay"><div class="spinner-sm"></div><div>กำลังโหลด...</div></div>';
+
   try {
-    // สร้าง container ชั่วคราวสำหรับ render
+    const records = await API.getAttendance({ studentId: id });
+    records.sort((a,b) => b.date.localeCompare(a.date));
+
+    const s = _students.find(st => (st.studentId||st.id) === id);
+    if (!s) throw new Error('ไม่พบข้อมูลนักเรียน');
+
+    const p    = records.filter(r => r.status==='present').length;
+    const l    = records.filter(r => r.status==='late').length;
+    const a    = records.filter(r => r.status==='absent').length;
+    const lv   = records.filter(r => r.status==='leave').length;
+    const total = records.length;
+    const rate  = total > 0 ? Math.round(((p+l)/total)*100) : 0;
+    const fn    = s.firstName||'';
+    const ln    = s.lastName||'';
+    const initials = `${fn[0]||''}${ln[0]||''}`;
+
+    document.getElementById('studentReportContent').innerHTML = `
+      <div class="student-report-header">
+        <div class="student-report-avatar">${initials}</div>
+        <div style="flex:1">
+          <div style="font-size:22px;font-weight:800">${s.prefix||''}${fn} ${ln}</div>
+          <div style="color:var(--text-muted);margin-top:4px">ชั้น ${s.classLevel||s.class||''}/${s.room||''} · เลขที่ ${s.number||s.no||''} · รหัส ${id}</div>
+          <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">
+            <span class="badge badge-green">✅ มาเรียน ${p}</span>
+            <span class="badge badge-yellow">⏰ สาย ${l}</span>
+            <span class="badge badge-red">❌ ขาด ${a}</span>
+            <span class="badge badge-blue">📝 ลา ${lv}</span>
+          </div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:42px;font-weight:900;color:${rate>=80?'var(--accent)':rate>=60?'var(--warning)':'var(--danger)'}">${rate}%</div>
+          <div style="font-size:12px;color:var(--text-muted)">อัตราการมาเรียน</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">ประวัติการมาเรียน (${records.length} รายการ)</div>
+          <button class="btn btn-ghost" onclick="exportStudentPDF('${id}')">📄 Export PDF</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>วันที่</th><th>วัน</th><th>เวลา</th><th>สถานะ</th><th>วิธี</th></tr></thead>
+            <tbody>
+              ${records.slice(0, 100).map(r => {
+                const d    = new Date(r.date + 'T00:00:00');
+                const day  = d.toLocaleDateString('th-TH', { weekday:'short' });
+                const info = STATUS_LABELS[r.status] || STATUS_LABELS['absent'];
+                return `
+                  <tr>
+                    <td>${r.date}</td>
+                    <td style="color:var(--text-muted)">${day}</td>
+                    <td>${r.time||'—'}</td>
+                    <td><span class="badge ${info.badge}">${info.icon} ${info.label}</span></td>
+                    <td style="font-size:13px">${r.method==='face'?'📷 Face':'✍️ Manual'}</td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  } catch(err) {
+    document.getElementById('studentReportContent').innerHTML =
+      `<div style="padding:40px;text-align:center;color:var(--danger)">❌ ${err.message}</div>`;
+  }
+}
+
+// ════════════════════════════════════════════
+// Summary Report
+// ════════════════════════════════════════════
+
+async function loadSummaryReport() {
+  const range = document.getElementById('summaryRange').value;
+  document.getElementById('summaryContent').innerHTML =
+    '<div class="loading-overlay"><div class="spinner-sm"></div><div>กำลังโหลด...</div></div>';
+
+  try {
+    let filter = {};
+    if (range !== 'all') {
+      const { start, end } = getDateRange(range);
+      filter = {
+        dateFrom: start.toISOString().split('T')[0],
+        dateTo:   end.toISOString().split('T')[0],
+      };
+    }
+
+    const [students, attendance] = await Promise.all([
+      API.getStudents(),
+      API.getAttendance(filter),
+    ]);
+
+    const counts = { present:0, late:0, absent:0, leave:0 };
+    attendance.forEach(r => counts[r.status] = (counts[r.status]||0)+1);
+
+    const classStats = {};
+    students.forEach(s => {
+      const key = `${s.classLevel||s.class||'?'}/${s.room||'?'}`;
+      if (!classStats[key]) classStats[key] = { total:0, present:0, late:0, absent:0, leave:0 };
+      classStats[key].total++;
+    });
+    attendance.forEach(r => {
+      const s = students.find(st => (st.studentId||st.id) === r.studentId);
+      if (!s) return;
+      const key = `${s.classLevel||s.class||'?'}/${s.room||'?'}`;
+      if (classStats[key] && classStats[key][r.status] !== undefined) {
+        classStats[key][r.status]++;
+      }
+    });
+
+    const classRows = Object.entries(classStats).sort((a,b) => {
+      const ra = a[1].total ? (a[1].present+a[1].late)/a[1].total : 0;
+      const rb = b[1].total ? (b[1].present+b[1].late)/b[1].total : 0;
+      return rb - ra;
+    });
+
+    document.getElementById('summaryContent').innerHTML = `
+      <div class="stats-grid" style="margin-bottom:20px">
+        ${Object.entries(counts).map(([s,n]) => {
+          const info = STATUS_LABELS[s];
+          return `<div class="stat-card"><div class="stat-value">${n}</div><div class="stat-label">${info.label}</div></div>`;
+        }).join('')}
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">สรุปรายห้องเรียน</div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>อันดับ</th><th>ห้องเรียน</th><th>นักเรียน</th><th>มาเรียน</th><th>สาย</th><th>ขาด</th><th>%มาเรียน</th></tr></thead>
+            <tbody>
+              ${classRows.map(([name, s], i) => {
+                const rate  = s.total ? Math.round((s.present+s.late)/s.total*100) : 0;
+                const color = rate>=80?'var(--accent)':rate>=60?'var(--warning)':'var(--danger)';
+                return `
+                  <tr>
+                    <td><span style="font-size:20px;font-weight:900;color:${i<3?'var(--warning)':'var(--text-muted)'}">${i+1}</span></td>
+                    <td style="font-weight:600">ชั้น ${name}</td>
+                    <td>${s.total}</td>
+                    <td style="color:var(--accent);font-weight:700">${s.present}</td>
+                    <td style="color:var(--warning);font-weight:700">${s.late}</td>
+                    <td style="color:var(--danger);font-weight:700">${s.absent}</td>
+                    <td>
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <div class="progress-bar" style="width:80px"><div class="progress-fill" style="width:${rate}%"></div></div>
+                        <span style="font-weight:800;color:${color}">${rate}%</span>
+                      </div>
+                    </td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  } catch(err) {
+    document.getElementById('summaryContent').innerHTML =
+      `<div style="padding:40px;text-align:center;color:var(--danger)">❌ ${err.message}</div>`;
+  }
+}
+
+// ════════════════════════════════════════════
+// PDF Export — html2canvas + jsPDF
+// รองรับภาษาไทยสมบูรณ์ด้วย canvas rendering
+// ════════════════════════════════════════════
+
+async function htmlToPDF(htmlContent, filename) {
+  showToast('กำลังสร้าง PDF...', 'กรุณารอสักครู่', 'info', 0);
+  try {
+    // Inject Google Font ให้ iframe โหลดได้
+    const fontLink = `<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">`;
+
     const wrap = document.createElement('div');
     wrap.style.cssText = [
       'position:fixed', 'left:-9999px', 'top:0',
-      'width:794px',           // A4 width at 96dpi
+      'width:794px',
       'background:#fff',
       'color:#111',
-      'font-family:"IBM Plex Sans Thai",Sarabun,Arial,sans-serif',
+      'font-family:"IBM Plex Sans Thai",Sarabun,sans-serif',
       'font-size:13px',
-      'line-height:1.6',
-      'padding:28px 32px',
+      'line-height:1.7',
+      'padding:32px 36px',
       'box-sizing:border-box',
-      'z-index:-1'
+      'z-index:-1',
     ].join(';');
     wrap.innerHTML = htmlContent;
     document.body.appendChild(wrap);
 
-    // รอ font โหลด
+    // รอ font โหลดและ render
     await document.fonts.ready;
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 500));
 
     const canvas = await html2canvas(wrap, {
       scale: 2,
@@ -499,205 +572,325 @@ async function htmlToPDF(htmlContent, filename, title = '') {
       allowTaint: true,
       backgroundColor: '#ffffff',
       logging: false,
+      onclone: (doc) => {
+        // ให้แน่ใจว่า font load ใน cloned doc
+        const lk = doc.createElement('link');
+        lk.rel  = 'stylesheet';
+        lk.href = 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap';
+        doc.head.appendChild(lk);
+      }
     });
     document.body.removeChild(wrap);
 
     const imgData = canvas.toDataURL('image/png');
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
 
     const pdfW = pdf.internal.pageSize.getWidth();
     const pdfH = pdf.internal.pageSize.getHeight();
     const imgW = pdfW;
     const imgH = (canvas.height * pdfW) / canvas.width;
 
-    let posY = 0;
-    let remainH = imgH;
-    while (remainH > 0) {
-      pdf.addImage(imgData, 'PNG', 0, posY === 0 ? 0 : -(imgH - remainH), imgW, imgH);
-      remainH -= pdfH;
-      if (remainH > 0) { pdf.addPage(); posY -= pdfH; }
+    let y = 0, remaining = imgH;
+    while (remaining > 0) {
+      pdf.addImage(imgData, 'PNG', 0, y === 0 ? 0 : -(imgH - remaining), imgW, imgH);
+      remaining -= pdfH;
+      if (remaining > 0) { pdf.addPage(); y -= pdfH; }
     }
 
     pdf.save(filename);
+    // ปิด toast loading
+    document.querySelectorAll('.toast').forEach(t => t.remove());
     showToast('Export PDF สำเร็จ ✅', filename, 'success');
   } catch(err) {
-    console.error('[PDF]', err);
+    document.querySelectorAll('.toast').forEach(t => t.remove());
     showToast('Export PDF ล้มเหลว', err.message, 'error');
+    console.error('[PDF]', err);
   }
 }
 
-// ── สร้าง HTML template สำหรับ PDF ──
+// ── PDF Template Helpers ─────────────────────
+
 function buildPDFHeader(title, subtitle = '') {
+  const printDate = new Date().toLocaleDateString('th-TH', { year:'numeric', month:'long', day:'numeric' });
   return `
     <div style="text-align:center;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #4f46e5">
-      <div style="font-size:18px;font-weight:800;color:#1e1b4b">${CONFIG.SCHOOL_NAME || 'FaceAttend'}</div>
-      <div style="font-size:14px;font-weight:700;margin-top:4px">${title}</div>
-      ${subtitle ? `<div style="font-size:12px;color:#555;margin-top:2px">${subtitle}</div>` : ''}
+      <div style="font-size:9px;color:#6b7280;margin-bottom:2px">${CONFIG.SCHOOL_NAME || 'FaceAttend'}</div>
+      <div style="font-size:17px;font-weight:800;color:#1e1b4b">${title}</div>
+      ${subtitle ? `<div style="font-size:12px;color:#555;margin-top:3px">${subtitle}</div>` : ''}
+      <div style="font-size:10px;color:#9ca3af;margin-top:4px">พิมพ์วันที่ ${printDate}</div>
     </div>`;
 }
 
 function buildPDFTable(headers, rows, colWidths = []) {
-  const thStyle = 'background:#4f46e5;color:#fff;padding:7px 10px;font-size:12px;font-weight:700;text-align:left';
-  const tdStyle = 'padding:6px 10px;font-size:12px;border-bottom:1px solid #e5e7eb';
+  const thStyle = 'background:#4f46e5;color:#fff;padding:7px 10px;font-size:11px;font-weight:700;text-align:left;border:none';
+  const tdStyle = 'padding:6px 10px;font-size:11px;border-bottom:1px solid #e5e7eb;vertical-align:middle';
   const trAlt   = 'background:#f8f7ff';
-
   return `
     <table style="width:100%;border-collapse:collapse;margin-top:8px">
-      <thead><tr>${headers.map((h,i) => `<th style="${thStyle}${colWidths[i]?';width:'+colWidths[i]:''}">${h}</th>`).join('')}</tr></thead>
+      <thead><tr>${headers.map((h,i) =>
+        `<th style="${thStyle}${colWidths[i]?';width:'+colWidths[i]:''}">${h}</th>`
+      ).join('')}</tr></thead>
       <tbody>${rows.map((row,ri) => `
         <tr style="${ri%2===1?trAlt:''}">
-          ${row.map(cell => `<td style="${tdStyle}">${cell}</td>`).join('')}
+          ${row.map(cell => `<td style="${tdStyle}">${cell ?? ''}</td>`).join('')}
         </tr>`).join('')}
       </tbody>
     </table>`;
 }
 
 function buildPDFFooter() {
-  return `<div style="margin-top:16px;font-size:11px;color:#777;text-align:right;border-top:1px solid #e5e7eb;padding-top:8px">
-    พิมพ์โดย: ${getCurrentUser()?.name || 'ระบบ'} &nbsp;|&nbsp; ${new Date().toLocaleString('th-TH')}
-  </div>`;
+  return `
+    <div style="margin-top:16px;font-size:10px;color:#9ca3af;text-align:right;border-top:1px solid #e5e7eb;padding-top:8px">
+      พิมพ์โดย: ${getCurrentUser()?.name || 'ระบบ'} &nbsp;|&nbsp; FaceAttend ${CONFIG.SCHOOL_NAME||''}
+    </div>`;
 }
 
-// ── Export รายวัน ────────────────────────────
+// ── Export Functions ───────────────────────
+
 async function exportDailyPDF() {
   const date = document.getElementById('dailyDate').value;
   if (!date) { showToast('กรุณาเลือกวันที่', '', 'warning'); return; }
 
-  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('th-TH', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  const statusColor = { present:'#059669', late:'#d97706', absent:'#dc2626', leave:'#2563eb' };
+  try {
+    const [students, dayRecords] = await Promise.all([
+      API.getStudents(),
+      API.getAttendance({ date }),
+    ]);
+    const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('th-TH',
+      { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    const statusColor = { present:'#059669', late:'#d97706', absent:'#dc2626', leave:'#2563eb' };
 
-  const rows = students.map(s => {
-    const rec = attendance.find(r => r.studentId === (s.id||s.studentId) && r.date === date);
-    const st  = rec ? STATUS_LABELS[rec.status] : STATUS_LABELS['absent'];
-    const color = statusColor[rec?.status || 'absent'];
-    return [
-      s.no||s.number||'',
-      `${s.prefix||''}${s.firstName||''} ${s.lastName||''}`,
-      `${s.classLevel||s.class||''}/${s.room||''}`,
-      rec?.time || '—',
-      `<span style="color:${color};font-weight:700">${st.icon} ${st.label}</span>`,
-      rec?.method === 'face' ? '📷 Face' : rec?.method === 'manual' ? '✍️ Manual' : '—'
-    ];
-  });
+    const rows = students.map(s => {
+      const sid = s.studentId||s.id;
+      const rec = dayRecords.find(r => r.studentId === sid);
+      const st  = STATUS_LABELS[rec?.status || 'absent'];
+      const col = statusColor[rec?.status||'absent'];
+      return [
+        s.number||s.no||'',
+        `${s.prefix||''}${s.firstName||''} ${s.lastName||''}`,
+        `${s.classLevel||s.class||''}/${s.room||''}`,
+        rec?.time||'—',
+        `<span style="color:${col};font-weight:700">${st.icon} ${st.label}</span>`,
+        rec?.method==='face'?'📷 Face':rec?.method==='manual'?'✍️ Manual':'—',
+      ];
+    });
 
-  const html = buildPDFHeader('รายงานการมาเรียนรายวัน', dateLabel)
-    + buildPDFTable(['เลขที่','ชื่อ-สกุล','ชั้น/ห้อง','เวลา','สถานะ','วิธี'], rows, ['40px','','80px','55px','80px','70px'])
-    + buildPDFFooter();
-
-  await htmlToPDF(html, `รายงานวัน_${date}.pdf`, 'รายงานรายวัน');
+    const html = buildPDFHeader('รายงานการมาเรียนรายวัน', dateLabel)
+      + buildPDFTable(['เลขที่','ชื่อ-สกุล','ชั้น/ห้อง','เวลา','สถานะ','วิธี'], rows,
+          ['40px','','70px','55px','80px','70px'])
+      + buildPDFFooter();
+    await htmlToPDF(html, `รายงานวัน_${date}.pdf`);
+  } catch(err) {
+    showToast('โหลดข้อมูลล้มเหลว', err.message, 'error');
+  }
 }
 
-function exportDailyCSV() {
+async function exportDailyCSV() {
   const date = document.getElementById('dailyDate').value;
-  const rows = [
-    ['เลขที่','ชื่อ-สกุล','ชั้น','ห้อง','เวลา','สถานะ','วิธี'],
-    ...students.map(s => {
-      const rec = attendance.find(r => r.studentId === s.id && r.date === date);
-      return [s.no, `${s.prefix}${s.firstName} ${s.lastName}`, s.class, s.room, rec?.time || '—', STATUS_LABELS[rec?.status || 'absent'].label, rec?.method || '—'];
-    })
-  ];
-  downloadCSV(rows, `รายงานวัน_${date}.csv`);
+  if (!date) { showToast('กรุณาเลือกวันที่','','warning'); return; }
+  try {
+    const [students, dayRecords] = await Promise.all([
+      API.getStudents(),
+      API.getAttendance({ date }),
+    ]);
+    const rows = [
+      ['เลขที่','ชื่อ-สกุล','ชั้น','ห้อง','เวลา','สถานะ','วิธี'],
+      ...students.map(s => {
+        const sid = s.studentId||s.id;
+        const rec = dayRecords.find(r => r.studentId === sid);
+        return [
+          s.number||s.no||'',
+          `${s.prefix||''}${s.firstName||''} ${s.lastName||''}`,
+          s.classLevel||s.class||'',
+          s.room||'',
+          rec?.time||'—',
+          STATUS_LABELS[rec?.status||'absent'].label,
+          rec?.method||'—',
+        ];
+      }),
+    ];
+    downloadCSV(rows, `รายงานวัน_${date}.csv`);
+  } catch(err) {
+    showToast('โหลดข้อมูลล้มเหลว', err.message, 'error');
+  }
 }
 
 async function exportClassPDF() {
-  // ใช้ฟังก์ชัน exportDailyPDF เหมือนกันเพราะ filter ชั้นแล้ว
-  await exportDailyPDF();
+  const cls  = document.getElementById('classFilterClass').value;
+  const room = document.getElementById('classFilterRoom').value;
+  const from = document.getElementById('classFrom').value;
+  const to   = document.getElementById('classTo').value;
+
+  try {
+    const filter = {};
+    if (from) filter.dateFrom = from;
+    if (to)   filter.dateTo   = to;
+
+    const [students, attendance] = await Promise.all([
+      API.getStudents(cls ? { classLevel:cls, room } : {}),
+      API.getAttendance(filter),
+    ]);
+
+    const filtered = students.filter(s =>
+      (!cls  || s.classLevel === cls) &&
+      (!room || String(s.room) === String(room))
+    );
+
+    const statusColor = { present:'#059669', late:'#d97706', absent:'#dc2626', leave:'#2563eb' };
+    const rows = filtered.map(s => {
+      const sid  = s.studentId||s.id;
+      const recs = attendance.filter(r => r.studentId === sid);
+      const p    = recs.filter(r=>r.status==='present').length;
+      const l    = recs.filter(r=>r.status==='late').length;
+      const a    = recs.filter(r=>r.status==='absent').length;
+      const rate = recs.length ? Math.round((p+l)/recs.length*100) : 0;
+      const col  = rate>=80?'#059669':rate>=60?'#d97706':'#dc2626';
+      return [
+        s.number||s.no||'',
+        `${s.prefix||''}${s.firstName||''} ${s.lastName||''}`,
+        `<span style="color:#059669;font-weight:700">${p}</span>`,
+        `<span style="color:#d97706;font-weight:700">${l}</span>`,
+        `<span style="color:#dc2626;font-weight:700">${a}</span>`,
+        `<span style="color:${col};font-weight:800">${rate}%</span>`,
+      ];
+    });
+
+    const html = buildPDFHeader(
+      `รายงานห้องเรียน ชั้น ${cls||'ทุกชั้น'}${room?'/'+room:''}`,
+      from && to ? `ช่วงวันที่ ${from} ถึง ${to}` : ''
+    )
+    + buildPDFTable(['เลขที่','ชื่อ-สกุล','มาเรียน','สาย','ขาด','%มาเรียน'], rows,
+        ['40px','','60px','60px','60px','70px'])
+    + buildPDFFooter();
+    await htmlToPDF(html, `รายงานห้อง_${cls||'ทุกชั้น'}_${to||'all'}.pdf`);
+  } catch(err) {
+    showToast('โหลดข้อมูลล้มเหลว', err.message, 'error');
+  }
 }
 
 async function exportStudentPDF(id) {
-  const s = students.find(st => (st.id||st.studentId) === id);
-  if (!s) { showToast('ไม่พบข้อมูลนักเรียน', '', 'error'); return; }
+  try {
+    const s = _students.find(st => (st.studentId||st.id) === id);
+    if (!s) throw new Error('ไม่พบข้อมูลนักเรียน');
 
-  const records = attendance.filter(r => r.studentId === id).sort((a,b) => b.date.localeCompare(a.date));
-  const p     = records.filter(r => r.status==='present').length;
-  const l     = records.filter(r => r.status==='late').length;
-  const a     = records.filter(r => r.status==='absent').length;
-  const total = records.length;
-  const rate  = total > 0 ? Math.round(((p+l)/total)*100) : 0;
-  const rateColor = rate>=80?'#059669':rate>=60?'#d97706':'#dc2626';
+    const records = await API.getAttendance({ studentId: id });
+    records.sort((a,b) => b.date.localeCompare(a.date));
 
-  const statusColor = { present:'#059669', late:'#d97706', absent:'#dc2626', leave:'#2563eb' };
+    const p     = records.filter(r=>r.status==='present').length;
+    const l     = records.filter(r=>r.status==='late').length;
+    const a     = records.filter(r=>r.status==='absent').length;
+    const lv    = records.filter(r=>r.status==='leave').length;
+    const total = records.length;
+    const rate  = total > 0 ? Math.round(((p+l)/total)*100) : 0;
+    const rateColor = rate>=80?'#059669':rate>=60?'#d97706':'#dc2626';
+    const statusColor = { present:'#059669', late:'#d97706', absent:'#dc2626', leave:'#2563eb' };
 
-  const summaryBox = `
-    <div style="display:flex;gap:12px;margin:12px 0;flex-wrap:wrap">
-      ${[['มาเรียน',p,'#059669'],['สาย',l,'#d97706'],['ขาด',a,'#dc2626'],['อัตรา',rate+'%',rateColor]].map(([lb,val,col])=>`
-        <div style="flex:1;min-width:80px;background:#f8f7ff;border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:20px;font-weight:900;color:${col}">${val}</div>
-          <div style="font-size:11px;color:#555">${lb}</div>
-        </div>`).join('')}
-    </div>`;
+    const summaryBox = `
+      <div style="display:flex;gap:12px;margin:12px 0;flex-wrap:wrap">
+        ${[['มาเรียน',p,'#059669'],['สาย',l,'#d97706'],['ขาด',a,'#dc2626'],['ลา',lv,'#2563eb'],['อัตรา',rate+'%',rateColor]].map(([lb,val,col])=>`
+          <div style="flex:1;min-width:70px;background:#f8f7ff;border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:18px;font-weight:900;color:${col}">${val}</div>
+            <div style="font-size:10px;color:#555">${lb}</div>
+          </div>`).join('')}
+      </div>`;
 
-  const rows = records.map(r => {
-    const d  = new Date(r.date + 'T00:00:00');
-    const st = STATUS_LABELS[r.status] || STATUS_LABELS['absent'];
-    return [
-      r.date,
-      d.toLocaleDateString('th-TH',{weekday:'short'}),
-      r.time || '—',
-      `<span style="color:${statusColor[r.status]||'#111'};font-weight:700">${st.icon} ${st.label}</span>`,
-      r.method==='face'?'📷':'✍️'
-    ];
-  });
+    const rows = records.map(r => {
+      const d  = new Date(r.date + 'T00:00:00');
+      const st = STATUS_LABELS[r.status] || STATUS_LABELS['absent'];
+      const col = statusColor[r.status||'absent'];
+      return [
+        r.date,
+        d.toLocaleDateString('th-TH',{ weekday:'short' }),
+        r.time||'—',
+        `<span style="color:${col};font-weight:700">${st.icon} ${st.label}</span>`,
+        r.method==='face'?'📷 Face':'✍️ Manual',
+      ];
+    });
 
-  const cls = s.classLevel||s.class||'';
-  const html = buildPDFHeader(
-    'รายงานการมาเรียนรายบุคคล',
-    `${s.prefix||''}${s.firstName||''} ${s.lastName||''} &nbsp;|&nbsp; ชั้น ${cls}/${s.room||''} &nbsp;|&nbsp; รหัส ${s.id||s.studentId||''}`
-  )
-  + summaryBox
-  + buildPDFTable(['วันที่','วัน','เวลา','สถานะ','วิธี'], rows, ['90px','50px','55px','90px','40px'])
-  + buildPDFFooter();
+    const fn  = s.firstName||'';
+    const ln  = s.lastName||'';
+    const cls = s.classLevel||s.class||'';
+    const html = buildPDFHeader(
+      'รายงานการมาเรียนรายบุคคล',
+      `${s.prefix||''}${fn} ${ln}  |  ชั้น ${cls}/${s.room||''}  |  รหัส ${id}`
+    )
+    + summaryBox
+    + buildPDFTable(['วันที่','วัน','เวลา','สถานะ','วิธี'], rows, ['90px','50px','55px','90px','60px'])
+    + buildPDFFooter();
 
-  await htmlToPDF(html, `รายงาน_${s.firstName||''}_${s.lastName||''}.pdf`);
+    await htmlToPDF(html, `รายงาน_${fn}_${ln}.pdf`);
+  } catch(err) {
+    showToast('Export PDF ล้มเหลว', err.message, 'error');
+  }
 }
 
 async function exportSummaryPDF() {
-  // รวมสถิติทุกชั้น
-  const classMap = {};
-  students.forEach(s => {
-    const key = `${s.classLevel||s.class||'?'}/${s.room||'?'}`;
-    if (!classMap[key]) classMap[key] = { cls:key, total:0, present:0, late:0, absent:0, leave:0 };
-    classMap[key].total++;
-  });
-  attendance.forEach(r => {
-    const s = students.find(st => (st.id||st.studentId) === r.studentId);
-    if (!s) return;
-    const key = `${s.classLevel||s.class||'?'}/${s.room||'?'}`;
-    if (classMap[key] && r.status) classMap[key][r.status] = (classMap[key][r.status]||0) + 1;
-  });
+  try {
+    const range = document.getElementById('summaryRange').value;
+    let filter = {};
+    if (range !== 'all') {
+      const { start, end } = getDateRange(range);
+      filter = {
+        dateFrom: start.toISOString().split('T')[0],
+        dateTo:   end.toISOString().split('T')[0],
+      };
+    }
 
-  const rows = Object.values(classMap).sort((a,b)=>a.cls.localeCompare(b.cls)).map(c => {
-    const rate = c.total ? Math.round(((c.present+c.late)/c.total)*100) : 0;
-    const rColor = rate>=80?'#059669':rate>=60?'#d97706':'#dc2626';
-    return [
-      `ชั้น ${c.cls}`,
-      c.total,
-      `<span style="color:#059669;font-weight:700">${c.present}</span>`,
-      `<span style="color:#d97706;font-weight:700">${c.late}</span>`,
-      `<span style="color:#dc2626;font-weight:700">${c.absent}</span>`,
-      `<span style="color:${rColor};font-weight:800">${rate}%</span>`
-    ];
-  });
+    const [students, attendance] = await Promise.all([
+      API.getStudents(),
+      API.getAttendance(filter),
+    ]);
 
-  const html = buildPDFHeader(
-    'รายงานสรุปการมาเรียน',
-    `ข้อมูล ณ วันที่ ${new Date().toLocaleDateString('th-TH', {year:'numeric',month:'long',day:'numeric'})}`
-  )
-  + buildPDFTable(['ห้องเรียน','นักเรียน','มาเรียน','สาย','ขาด','อัตรา'], rows)
-  + buildPDFFooter();
+    const classMap = {};
+    students.forEach(s => {
+      const key = `${s.classLevel||s.class||'?'}/${s.room||'?'}`;
+      if (!classMap[key]) classMap[key] = { cls:key, total:0, present:0, late:0, absent:0, leave:0 };
+      classMap[key].total++;
+    });
+    attendance.forEach(r => {
+      const s = students.find(st => (st.studentId||st.id) === r.studentId);
+      if (!s) return;
+      const key = `${s.classLevel||s.class||'?'}/${s.room||'?'}`;
+      if (classMap[key] && r.status) classMap[key][r.status] = (classMap[key][r.status]||0)+1;
+    });
 
-  await htmlToPDF(html, 'รายงานสรุป.pdf');
+    const statusColor = { present:'#059669', late:'#d97706', absent:'#dc2626', leave:'#2563eb' };
+    const rows = Object.values(classMap).sort((a,b)=>a.cls.localeCompare(b.cls)).map(c => {
+      const rate  = c.total ? Math.round(((c.present+c.late)/c.total)*100) : 0;
+      const rColor = rate>=80?'#059669':rate>=60?'#d97706':'#dc2626';
+      return [
+        `ชั้น ${c.cls}`,
+        c.total,
+        `<span style="color:#059669;font-weight:700">${c.present}</span>`,
+        `<span style="color:#d97706;font-weight:700">${c.late}</span>`,
+        `<span style="color:#dc2626;font-weight:700">${c.absent}</span>`,
+        `<span style="color:${rColor};font-weight:800">${rate}%</span>`,
+      ];
+    });
+
+    const rangeLabel = { week:'สัปดาห์นี้', month:'เดือนนี้', all:'ทั้งหมด' }[range]||'';
+    const html = buildPDFHeader(
+      'รายงานสรุปการมาเรียน',
+      `ช่วงเวลา: ${rangeLabel} | ข้อมูล ณ วันที่ ${new Date().toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'})}`
+    )
+    + buildPDFTable(['ห้องเรียน','นักเรียน','มาเรียน','สาย','ขาด','อัตรา'], rows)
+    + buildPDFFooter();
+
+    await htmlToPDF(html, `รายงานสรุป_${range}.pdf`);
+  } catch(err) {
+    showToast('Export PDF ล้มเหลว', err.message, 'error');
+  }
 }
 
 function downloadCSV(rows, filename) {
-  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  const csv  = rows.map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob(['\ufeff' + csv], { type:'text/csv;charset=utf-8' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
-  showToast('Export CSV สำเร็จ', '', 'success');
+  showToast('Export CSV สำเร็จ ✅', filename, 'success');
 }
 </script>
 </body>

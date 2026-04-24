@@ -9,12 +9,10 @@
 <link rel="stylesheet" href="styles/main.css">
 <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
 <style>
-/* ── Layout ── */
 .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px}
 .view-toggle{display:flex;background:var(--bg-card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px;gap:3px}
 .vbtn{padding:6px 13px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text-muted);border:none;background:none;font-family:inherit;transition:all .2s}
 .vbtn.active{background:var(--primary);color:#fff}
-/* ── Cards ── */
 .s-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
 .s-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;transition:all .2s;position:relative;cursor:pointer}
 .s-card:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--primary)}
@@ -30,18 +28,19 @@
 .face-dot{position:absolute;top:11px;right:11px;width:10px;height:10px;border-radius:50%}
 .face-dot.has{background:var(--accent);box-shadow:0 0 6px rgba(16,185,129,.5)}
 .face-dot.no{background:var(--warning)}
-/* ── API badge ── */
 .api-badge{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid}
 .api-ok{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3);color:var(--accent)}
 .api-warn{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3);color:var(--warning)}
 .api-err{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:var(--danger)}
-/* ── Modal camera ── */
 .modal-video{width:100%;aspect-ratio:4/3;background:#000;border-radius:var(--radius-sm);object-fit:cover;transform:scaleX(-1)}
 .face-status-box{font-size:12px;padding:6px 10px;border-radius:8px;margin-top:8px;text-align:center}
 .face-status-box.ok{background:rgba(16,185,129,.1);color:var(--accent)}
 .face-status-box.warn{background:rgba(245,158,11,.1);color:var(--warning)}
 .face-status-box.err{background:rgba(239,68,68,.1);color:var(--danger)}
 .face-status-box.info{background:rgba(79,70,229,.1);color:var(--primary-light)}
+.loading-overlay{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--text-muted);flex-direction:column;gap:12px}
+.spinner-sm{width:28px;height:28px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -50,18 +49,6 @@
   <div class="main-content">
     <header class="topbar" id="topbar"></header>
     <main class="page-content">
-
-      <!-- API Status Banner -->
-      <div id="apiBanner" style="margin-bottom:14px;display:none">
-        <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px;font-size:13px">
-          <span style="font-size:18px">⚠️</span>
-          <div>
-            <b>โหมด Local (ยังไม่เชื่อมต่อ Google Sheet)</b><br>
-            <span style="color:var(--text-muted)">แก้ไข <code>scripts/config.js</code> → <code>CONFIG.API_URL</code> ใส่ URL Apps Script จริง</span>
-          </div>
-          <a href="settings.html" class="btn btn-ghost" style="margin-left:auto;font-size:12px;white-space:nowrap">⚙️ ตั้งค่า</a>
-        </div>
-      </div>
 
       <!-- Toolbar -->
       <div class="toolbar">
@@ -81,30 +68,35 @@
           <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
         </select>
         <div style="flex:1"></div>
-        <!-- API Status pill -->
         <div id="apiStatusPill" class="api-badge api-warn">⏳ ตรวจสอบ...</div>
         <div class="view-toggle">
           <button class="vbtn active" id="btnGrid" onclick="setView('grid')">⊞</button>
           <button class="vbtn" id="btnList" onclick="setView('list')">≡</button>
         </div>
-        <button class="btn btn-ghost" onclick="syncFromSheet()" title="โหลดข้อมูลจาก Google Sheet">🔄 Sync</button>
+        <button class="btn btn-ghost" onclick="reloadStudents()" title="โหลดข้อมูลจาก Google Sheet">🔄 Reload</button>
         <button class="btn btn-ghost" onclick="exportCSV()">📥 CSV</button>
         <button class="btn btn-primary" onclick="openAdd()">+ เพิ่มนักเรียน</button>
       </div>
 
       <div id="countLabel" class="text-sm text-muted mb-16"></div>
 
+      <!-- Loading -->
+      <div id="loadingState" class="loading-overlay">
+        <div class="spinner-sm"></div>
+        <div>กำลังโหลดข้อมูลจาก Google Sheet...</div>
+      </div>
+
       <!-- Grid View -->
-      <div id="gridView" class="s-grid"></div>
+      <div id="gridView" class="s-grid" style="display:none"></div>
 
       <!-- List View -->
-      <div id="listView" class="card hidden">
+      <div id="listView" class="card hidden" style="display:none">
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>เลขที่</th><th>ชื่อ-สกุล</th><th>ชั้น/ห้อง</th>
-                <th>เพศ</th><th>ใบหน้า</th><th>มาเรียน%</th><th>จัดการ</th>
+                <th>เพศ</th><th>ใบหน้า</th><th>สถานะ</th><th>จัดการ</th>
               </tr>
             </thead>
             <tbody id="listBody"></tbody>
@@ -117,15 +109,13 @@
 </div>
 
 <!-- ══════════════ Modal เพิ่ม/แก้ไข ══════════════ -->
-<div id="modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:20px">
+<div id="modal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px">
   <div style="background:var(--bg-card);border:1px solid var(--border-strong);border-radius:20px;padding:30px;max-width:640px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 40px 80px rgba(0,0,0,.5)">
-
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px">
       <h2 style="font-size:19px;font-weight:700" id="modalTitle">➕ เพิ่มนักเรียน</h2>
       <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text-muted)">✕</button>
     </div>
 
-    <!-- ── ข้อมูลพื้นฐาน ── -->
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">รหัสนักเรียน *</label>
@@ -170,12 +160,10 @@
       </div>
     </div>
 
-    <!-- ── ภาพใบหน้า ── -->
     <div style="height:1px;background:var(--border);margin:16px 0"></div>
     <div style="font-size:14px;font-weight:700;margin-bottom:14px">📷 ภาพใบหน้าสำหรับ Face Recognition</div>
 
     <div class="form-grid">
-      <!-- กล้อง -->
       <div>
         <video id="modalVid" class="modal-video" autoplay muted playsinline style="display:none"></video>
         <canvas id="modalCanvas" class="modal-video" style="display:none"></canvas>
@@ -187,7 +175,6 @@
           <button class="btn btn-ghost" style="flex:1;font-size:12px" id="btnCapture" onclick="captureFace()" disabled>📸 ถ่าย</button>
         </div>
       </div>
-      <!-- Preview + Extract -->
       <div>
         <div id="facePreview" style="aspect-ratio:4/3;background:var(--bg-card2);border-radius:var(--radius-sm);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-muted);gap:8px;font-size:13px;border:2px dashed var(--border)">
           <span style="font-size:30px">👤</span><span>ตัวอย่างภาพ</span>
@@ -202,7 +189,6 @@
       </div>
     </div>
 
-    <!-- ── Buttons ── -->
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:22px;padding-top:18px;border-top:1px solid var(--border)">
       <button class="btn btn-ghost" onclick="closeModal()">ยกเลิก</button>
       <button class="btn btn-primary" id="btnSave" onclick="saveStudent()">
@@ -221,8 +207,8 @@ requireAuth();
 // ── State ────────────────────────────────
 let students    = [];
 let editingId   = null;
-let capturedImg = null;   // base64 image
-let capturedDesc= null;   // Float32Array descriptor
+let capturedImg = null;
+let capturedDesc= null;
 let modalStream = null;
 let currentView = 'grid';
 
@@ -230,7 +216,7 @@ let currentView = 'grid';
 document.addEventListener('DOMContentLoaded', async () => {
   renderSidebar('students');
   renderTopbar('จัดการนักเรียน', 'เพิ่ม แก้ไข และจัดการข้อมูล');
-  checkApiStatus();
+  await checkApiStatus();
   await loadStudents();
 });
 
@@ -238,61 +224,58 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function checkApiStatus() {
   const pill = document.getElementById('apiStatusPill');
   if (!CONFIG._hasRealAPI) {
-    pill.className  = 'api-badge api-warn';
-    pill.textContent = '💾 Local Only';
-    document.getElementById('apiBanner').style.display = 'block';
+    pill.className   = 'api-badge api-err';
+    pill.textContent = '❌ ไม่มี API URL';
     return;
   }
   try {
     pill.textContent = '⏳ ตรวจสอบ...';
     await API.ping();
-    pill.className  = 'api-badge api-ok';
+    pill.className   = 'api-badge api-ok';
     pill.textContent = '✅ Google Sheet';
-    document.getElementById('apiBanner').style.display = 'none';
   } catch(_) {
-    pill.className  = 'api-badge api-err';
+    pill.className   = 'api-badge api-err';
     pill.textContent = '❌ Sheet ไม่พร้อม';
-    document.getElementById('apiBanner').style.display = 'block';
   }
 }
 
-// ── Load Students ─────────────────────────
-async function loadStudents(forceSheet = false) {
-  // ถ้า forceSheet = true → ล้าง localStorage ก่อน เพื่อบังคับดึงจาก Sheet
-  if (forceSheet) {
-    localStorage.removeItem('fa_students');
-    console.log('[Students] localStorage cleared → force reload from Sheet');
-  }
+// ── Load Students from Google Sheet ──────
+async function loadStudents() {
+  document.getElementById('loadingState').style.display = 'flex';
+  document.getElementById('gridView').style.display = 'none';
+  document.getElementById('listView').style.display = 'none';
 
-  // sync GAS token ก่อน (สำคัญมากสำหรับ Google login)
-  if (typeof API !== 'undefined' && API.syncGASToken) {
+  try {
     await API.syncGASToken();
+    students = await API.getStudents();
+    // normalize
+    students = students.map(s => ({
+      ...s,
+      id:           s.studentId || s.id || '',
+      studentId:    s.studentId || s.id || '',
+      classLevel:   s.classLevel || '',
+      class:        s.classLevel || '',
+      no:           s.number || s.no || 1,
+      number:       s.number || s.no || 1,
+      faceImageUrl: s.faceImageUrl || '',
+    }));
+    document.getElementById('loadingState').style.display = 'none';
+    if (currentView === 'grid') document.getElementById('gridView').style.display = 'grid';
+    else document.getElementById('listView').style.display = 'block';
+    renderStudents();
+  } catch(err) {
+    document.getElementById('loadingState').innerHTML = `
+      <div style="font-size:32px">❌</div>
+      <div style="color:var(--danger);font-weight:600">${err.message}</div>
+      <button class="btn btn-primary" onclick="loadStudents()">ลองใหม่</button>`;
+    showToast('โหลดนักเรียนล้มเหลว', err.message, 'error');
   }
-
-  students = await API.getStudents();
-  console.log('[Students] Loaded:', students.length, 'students, source:', CONFIG._hasRealAPI ? 'GAS+Local' : 'Local');
-
-  // normalize field aliases
-  students = students.map(s => ({
-    ...s,
-    id:           s.id           || s.studentId   || '',
-    studentId:    s.studentId    || s.id           || '',
-    classLevel:   s.classLevel   || s.class        || '',
-    class:        s.classLevel   || s.class        || '',
-    no:           s.no           || s.number       || 1,
-    number:       s.number       || s.no           || 1,
-    imageUrl:     s.imageUrl     || s.faceImageUrl || '',
-    faceImageUrl: s.faceImageUrl || s.imageUrl     || '',
-  }));
-  renderStudents();
 }
 
-async function syncFromSheet() {
-  if (!CONFIG._hasRealAPI) { showToast('ยังไม่มี API URL', 'กรุณาตั้งค่าก่อน', 'warning'); return; }
-  showToast('กำลัง Sync...', 'ล้าง Cache แล้วโหลดจาก Google Sheet', 'info');
-  // forceSheet=true → ล้าง localStorage ก่อนดึงจาก Sheet
-  await loadStudents(true);
-  showToast('Sync สำเร็จ', `พบ ${students.length} คนใน Google Sheet`, 'success');
+async function reloadStudents() {
+  showToast('กำลังโหลด...', 'ดึงข้อมูลจาก Google Sheet', 'info', 1500);
+  await loadStudents();
+  showToast('โหลดสำเร็จ', `พบ ${students.length} คน`, 'success');
 }
 
 // ── Filter & Render ───────────────────────
@@ -302,37 +285,28 @@ function filterStudents() {
   const room = document.getElementById('fRoom').value;
   return students.filter(s => {
     const name = `${s.prefix||''}${s.firstName||''}${s.lastName||''}${s.id||''}`.toLowerCase();
-    const sc   = s.classLevel || s.class || '';
-    const sr   = String(s.room || '');
-    return (!q || name.includes(q)) && (!cls || sc === cls) && (!room || sr === room);
+    return (!q || name.includes(q))
+      && (!cls  || (s.classLevel||s.class||'') === cls)
+      && (!room || String(s.room||'') === room);
   });
-}
-
-function getRate(studentId) {
-  const recs = lsGetAttendance().filter(r => r.studentId === studentId || r.studentId === studentId);
-  if (!recs.length) return { p:0, l:0, a:0, rate:0 };
-  const p = recs.filter(r => r.status==='present').length;
-  const l = recs.filter(r => r.status==='late').length;
-  const a = recs.filter(r => r.status==='absent').length;
-  return { p, l, a, rate: Math.round((p/recs.length)*100) };
 }
 
 function renderStudents() {
   const list = filterStudents();
-  const sid  = (s) => s.id || s.studentId;
+  const sid  = s => s.studentId || s.id;
   document.getElementById('countLabel').textContent = `แสดง ${list.length} / ${students.length} คน`;
 
   if (currentView === 'grid') {
-    document.getElementById('gridView').innerHTML = list.map(s => {
-      const stats    = getRate(sid(s));
-      const initials = (s.firstName||'?')[0] + (s.lastName||'?')[0];
-      const hasF     = !!(s.faceDescriptor && s.faceDescriptor.length);
+    document.getElementById('gridView').innerHTML = list.length ? list.map(s => {
+      const initials = ((s.firstName||'?')[0]||'') + ((s.lastName||'?')[0]||'');
+      const hasF     = !!(s.faceDescriptor && Array.isArray(s.faceDescriptor) && s.faceDescriptor.length);
+      const imgSrc   = s.faceImageUrl || '';
       return `
         <div class="s-card" onclick="openEdit('${sid(s)}')">
           <div class="face-dot ${hasF?'has':'no'}" title="${hasF?'มีข้อมูลใบหน้า':'ยังไม่มีใบหน้า'}"></div>
           <div class="s-card-top">
-            ${s.faceImageUrl || s.imageUrl
-              ? `<img src="${s.faceImageUrl||s.imageUrl}" class="s-face" onerror="this.outerHTML='<div class=s-face>${initials}</div>'">`
+            ${imgSrc
+              ? `<img src="${imgSrc}" class="s-face" onerror="this.outerHTML='<div class=s-face>${initials}</div>'">`
               : `<div class="s-face">${initials}</div>`}
             <div>
               <div class="s-name">${s.prefix||''}${s.firstName||''}</div>
@@ -340,38 +314,24 @@ function renderStudents() {
               <div class="s-meta">ชั้น ${s.classLevel||s.class||''} ห้อง ${s.room||''} · เลขที่ ${s.no||s.number||''}</div>
             </div>
           </div>
-          <div class="s-stats">
-            <div class="s-stat"><div class="s-stat-n" style="color:var(--accent)">${stats.p}</div><div class="s-stat-l">มา</div></div>
-            <div class="s-stat"><div class="s-stat-n" style="color:var(--warning)">${stats.l}</div><div class="s-stat-l">สาย</div></div>
-            <div class="s-stat"><div class="s-stat-n" style="color:var(--danger)">${stats.a}</div><div class="s-stat-l">ขาด</div></div>
-          </div>
-          <div style="margin-top:8px">
-            <div class="progress-bar"><div class="progress-fill" style="width:${stats.rate}%"></div></div>
-            <div style="font-size:11px;color:var(--text-muted);text-align:right;margin-top:3px">${stats.rate}%</div>
-          </div>
           <div class="s-actions" onclick="event.stopPropagation()">
             <button class="btn btn-ghost" style="flex:1;font-size:12px;padding:7px" onclick="openEdit('${sid(s)}')">✏️ แก้ไข</button>
             <button class="btn btn-danger" style="font-size:12px;padding:7px 10px" onclick="removeStudent('${sid(s)}')">🗑️</button>
           </div>
         </div>`;
-    }).join('');
+    }).join('') : '<div style="grid-column:1/-1;padding:60px;text-align:center;color:var(--text-muted)">ไม่พบนักเรียน</div>';
+
   } else {
     document.getElementById('listBody').innerHTML = list.map(s => {
-      const stats = getRate(sid(s));
-      const hasF  = !!(s.faceDescriptor && s.faceDescriptor.length);
+      const hasF = !!(s.faceDescriptor && Array.isArray(s.faceDescriptor) && s.faceDescriptor.length);
       return `
         <tr>
-          <td>${s.no||s.number||''}</td>
+          <td>${s.number||s.no||''}</td>
           <td style="font-weight:600">${s.prefix||''}${s.firstName||''} ${s.lastName||''}</td>
           <td>${s.classLevel||s.class||''} / ${s.room||''}</td>
           <td>${s.gender||''}</td>
           <td>${hasF?'<span class="badge badge-green">✅ มี</span>':'<span class="badge badge-yellow">⚠️ ไม่มี</span>'}</td>
-          <td>
-            <div style="display:flex;align-items:center;gap:8px">
-              <div class="progress-bar" style="width:60px"><div class="progress-fill" style="width:${stats.rate}%"></div></div>
-              <span style="font-weight:700;font-size:12px">${stats.rate}%</span>
-            </div>
-          </td>
+          <td><span class="badge ${(s.activeStatus||'active')==='active'?'badge-green':'badge-gray'}">${(s.activeStatus||'active')==='active'?'ปกติ':'ไม่ใช้งาน'}</span></td>
           <td>
             <div style="display:flex;gap:6px">
               <button class="btn-icon" onclick="openEdit('${sid(s)}')">✏️</button>
@@ -387,19 +347,23 @@ function setView(v) {
   currentView = v;
   document.getElementById('btnGrid').classList.toggle('active', v==='grid');
   document.getElementById('btnList').classList.toggle('active', v==='list');
-  document.getElementById('gridView').classList.toggle('hidden', v!=='grid');
-  document.getElementById('listView').classList.toggle('hidden', v!=='list');
+  if (v === 'grid') {
+    document.getElementById('gridView').style.display = 'grid';
+    document.getElementById('listView').style.display = 'none';
+  } else {
+    document.getElementById('gridView').style.display = 'none';
+    document.getElementById('listView').style.display = 'block';
+  }
   renderStudents();
 }
 
-// ── Modal Open/Close ──────────────────────
+// ── Modal ─────────────────────────────────
 function openAdd() {
   editingId = null; capturedImg = null; capturedDesc = null;
   document.getElementById('modalTitle').textContent = '➕ เพิ่มนักเรียน';
   resetForm();
-  // Auto-generate ID
   const maxNo = students.reduce((m, s) => {
-    const n = parseInt((s.id||'S000').replace(/\D/g,''));
+    const n = parseInt((s.studentId||s.id||'S000').replace(/\D/g,''));
     return n > m ? n : m;
   }, 0);
   document.getElementById('fId').value = 'S' + String(maxNo + 1).padStart(3, '0');
@@ -409,29 +373,25 @@ function openAdd() {
 
 function openEdit(id) {
   editingId = id;
-  const s = students.find(st => (st.id||st.studentId) === id);
+  const s = students.find(st => (st.studentId||st.id) === id);
   if (!s) return;
   document.getElementById('modalTitle').textContent = '✏️ แก้ไขข้อมูลนักเรียน';
   resetForm();
-  document.getElementById('fId').value           = s.id || s.studentId || '';
-  document.getElementById('fId').disabled        = true;  // ไม่ให้แก้ ID
-  document.getElementById('fPrefix').value       = s.prefix      || 'ด.ช.';
-  document.getElementById('fFirst').value        = s.firstName   || '';
-  document.getElementById('fLast').value         = s.lastName    || '';
-  document.getElementById('fClassLevel').value   = s.classLevel  || s.class || 'ม.1';
-  document.getElementById('fRoom2').value        = String(s.room || '1');
-  document.getElementById('fNo').value           = s.no || s.number || 1;
-  document.getElementById('fGender').value       = s.gender || 'ชาย';
-
+  document.getElementById('fId').value         = s.studentId || s.id || '';
+  document.getElementById('fId').disabled      = true;
+  document.getElementById('fPrefix').value     = s.prefix      || 'ด.ช.';
+  document.getElementById('fFirst').value      = s.firstName   || '';
+  document.getElementById('fLast').value       = s.lastName    || '';
+  document.getElementById('fClassLevel').value = s.classLevel  || 'ม.1';
+  document.getElementById('fRoom2').value      = String(s.room || '1');
+  document.getElementById('fNo').value         = s.number || s.no || 1;
+  document.getElementById('fGender').value     = s.gender || 'ชาย';
   capturedDesc = s.faceDescriptor || null;
-  const imgUrl = s.faceImageUrl || s.imageUrl || '';
-  if (imgUrl) {
-    setPreviewImg(imgUrl);
+  if (s.faceImageUrl) {
+    setPreviewImg(s.faceImageUrl);
     document.getElementById('btnExtract').disabled = false;
   }
-  if (capturedDesc) {
-    setFaceStatus('✅ มี Face Descriptor แล้ว', 'ok');
-  }
+  if (capturedDesc) setFaceStatus('✅ มี Face Descriptor แล้ว', 'ok');
   showModal();
 }
 
@@ -467,70 +427,74 @@ async function saveStudent() {
     return;
   }
 
-  const btn = document.getElementById('saveBtnText');
-  btn.textContent = '⏳ กำลังบันทึก...';
+  const btnText = document.getElementById('saveBtnText');
+  btnText.textContent = '⏳ กำลังบันทึก...';
   document.getElementById('btnSave').disabled = true;
 
   const payload = {
-    id,
-    studentId:    id,
+    id, studentId: editingId || id,
     prefix:       document.getElementById('fPrefix').value,
-    firstName,
-    lastName,
+    firstName, lastName,
     classLevel:   document.getElementById('fClassLevel').value,
-    class:        document.getElementById('fClassLevel').value,
     room:         document.getElementById('fRoom2').value,
-    no:           parseInt(document.getElementById('fNo').value) || 1,
     number:       parseInt(document.getElementById('fNo').value) || 1,
     gender:       document.getElementById('fGender').value,
     faceImageUrl: capturedImg || '',
-    imageUrl:     capturedImg || '',
     faceDescriptor: capturedDesc || null,
     activeStatus: 'active',
   };
 
   try {
     if (editingId) {
-      payload.studentId = editingId;
       await API.updateStudent(payload);
-
-      // update local array
-      const idx = students.findIndex(s => (s.id||s.studentId) === editingId);
-      if (idx >= 0) students[idx] = { ...students[idx], ...payload };
-
+      // อัปโหลดรูปถ้ามีรูปใหม่
+      if (capturedImg && capturedImg.startsWith('data:')) {
+        try {
+          const res = await API.uploadFaceImage(editingId, capturedImg);
+          if (res && res.imageUrl) {
+            await API.saveFaceDescriptor(editingId, capturedDesc, res.imageUrl);
+          }
+        } catch(_) {}
+      }
       showToast('แก้ไขสำเร็จ', `${payload.prefix}${firstName} ${lastName}`, 'success');
     } else {
-      // check duplicate
-      if (students.find(s => (s.id||s.studentId) === id)) {
-        showToast('รหัสซ้ำ', `${id} มีในระบบแล้ว`, 'error');
-        return;
-      }
       await API.addStudent(payload);
-      students.push(payload);
+      // อัปโหลดรูปหลังเพิ่ม
+      if (capturedImg && capturedImg.startsWith('data:')) {
+        try {
+          const res = await API.uploadFaceImage(id, capturedImg);
+          if (res && res.imageUrl && capturedDesc) {
+            await API.saveFaceDescriptor(id, capturedDesc, res.imageUrl);
+          }
+        } catch(_) {}
+      }
       showToast('เพิ่มนักเรียนสำเร็จ', `${payload.prefix}${firstName} ${lastName}`, 'success');
     }
 
     closeModal();
-    renderStudents();
-  } catch (err) {
+    await loadStudents(); // reload จาก Sheet
+  } catch(err) {
     showToast('บันทึกไม่สำเร็จ', err.message, 'error');
   } finally {
-    btn.textContent = '💾 บันทึก';
+    btnText.textContent = '💾 บันทึก';
     document.getElementById('btnSave').disabled = false;
   }
 }
 
 // ── Delete ────────────────────────────────
 function removeStudent(id) {
-  const s = students.find(st => (st.id||st.studentId) === id);
+  const s = students.find(st => (st.studentId||st.id) === id);
   confirm(
     'ลบนักเรียน',
     `ต้องการลบ ${s?.prefix||''}${s?.firstName||''} ${s?.lastName||''} ?`,
     async () => {
-      await API.deleteStudent(id);
-      students = students.filter(st => (st.id||st.studentId) !== id);
-      renderStudents();
-      showToast('ลบสำเร็จ', '', 'info');
+      try {
+        await API.deleteStudent(id);
+        showToast('ลบสำเร็จ', '', 'info');
+        await loadStudents();
+      } catch(err) {
+        showToast('ลบไม่สำเร็จ', err.message, 'error');
+      }
     }
   );
 }
@@ -554,17 +518,14 @@ async function openCam() {
 function captureFace() {
   const vid = document.getElementById('modalVid');
   const c   = document.getElementById('modalCanvas');
-  c.width  = vid.videoWidth;
-  c.height = vid.videoHeight;
+  c.width  = vid.videoWidth; c.height = vid.videoHeight;
   c.getContext('2d').drawImage(vid, 0, 0);
   capturedImg = c.toDataURL('image/jpeg', 0.85);
-  c.style.display = 'block';
-  vid.style.display = 'none';
+  c.style.display = 'block'; vid.style.display = 'none';
   stopModalCam();
   setPreviewImg(capturedImg);
   document.getElementById('btnExtract').disabled = false;
   setFaceStatus('📸 ถ่ายรูปแล้ว — กด Extract Face', 'info');
-  showToast('ถ่ายรูปสำเร็จ','','success');
 }
 
 function stopModalCam() {
@@ -572,8 +533,7 @@ function stopModalCam() {
 }
 
 function handleUpload(input) {
-  const f = input.files[0];
-  if (!f) return;
+  const f = input.files[0]; if (!f) return;
   const r = new FileReader();
   r.onload = e => {
     capturedImg = e.target.result;
@@ -596,17 +556,15 @@ async function extractFace() {
   document.getElementById('btnExtract').disabled = true;
 
   try {
-    // โหลด models ถ้ายังไม่ได้โหลด
     if (typeof faceapi !== 'undefined') {
       const modelUrl = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
       if (!faceapi.nets.ssdMobilenetv1.params) {
-        setFaceStatus('⏳ โหลด AI Model...', 'info');
+        setFaceStatus('⏳ โหลด AI Model (~8 วินาที)...', 'info');
         await faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl);
         await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
         await faceapi.nets.faceRecognitionNet.loadFromUri(modelUrl);
       }
-      const img = new Image();
-      img.src   = capturedImg;
+      const img = new Image(); img.src = capturedImg;
       await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
       const det = await faceapi
         .detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence:0.4 }))
@@ -622,13 +580,11 @@ async function extractFace() {
       setFaceStatus(`✅ Face Descriptor สำเร็จ (${capturedDesc.length} dims)`, 'ok');
       showToast('Extract สำเร็จ','พร้อมใช้งาน Face Recognition','success');
     } else {
-      throw new Error('face-api ยังไม่โหลด');
+      throw new Error('face-api ยังไม่โหลด กรุณารอสักครู่แล้วลองใหม่');
     }
   } catch(e) {
-    // Demo mode: สร้าง random descriptor
-    capturedDesc = Array.from({ length:128 }, () => Math.random() * 2 - 1);
-    setFaceStatus('⚠️ Demo Descriptor (ทดสอบ — ไม่ใช่ใบหน้าจริง)', 'warn');
-    showToast('Demo Mode', 'ใช้ descriptor จำลอง', 'warning');
+    setFaceStatus('❌ ' + e.message, 'err');
+    showToast('Extract ล้มเหลว', e.message, 'error');
   } finally {
     document.getElementById('btnExtract').disabled = false;
   }
@@ -636,8 +592,8 @@ async function extractFace() {
 
 function setFaceStatus(msg, type='info') {
   const el = document.getElementById('faceStatus');
-  el.textContent  = msg;
-  el.className    = 'face-status-box ' + type;
+  el.textContent = msg;
+  el.className   = 'face-status-box ' + type;
 }
 
 // ── Export CSV ────────────────────────────
@@ -645,12 +601,12 @@ function exportCSV() {
   const rows = [
     ['รหัส','คำนำหน้า','ชื่อ','นามสกุล','ชั้น','ห้อง','เลขที่','เพศ','มีใบหน้า'],
     ...students.map(s => [
-      s.id||s.studentId, s.prefix||'', s.firstName||'', s.lastName||'',
-      s.classLevel||s.class||'', s.room||'', s.no||s.number||'', s.gender||'',
-      !!(s.faceDescriptor && s.faceDescriptor.length) ? 'ใช่' : 'ไม่'
+      s.studentId||s.id, s.prefix||'', s.firstName||'', s.lastName||'',
+      s.classLevel||s.class||'', s.room||'', s.number||s.no||'', s.gender||'',
+      !!(s.faceDescriptor && s.faceDescriptor.length) ? 'ใช่' : 'ไม่',
     ])
   ];
-  const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv  = rows.map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
   const blob = new Blob(['\ufeff'+csv], { type:'text/csv;charset=utf-8' });
   const a    = document.createElement('a');
   a.href     = URL.createObjectURL(blob);

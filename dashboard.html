@@ -31,6 +31,9 @@
 .filter-btn { padding: 7px 16px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg-card2); color: var(--text-muted); cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 500; transition: all 0.2s; }
 .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
 .filter-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary-light); }
+.loading-overlay { display:flex;align-items:center;justify-content:center;padding:60px;color:var(--text-muted);flex-direction:column;gap:12px; }
+.spinner-sm { width:28px;height:28px;border:3px solid rgba(255,255,255,.1);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 @media (max-width: 1100px) {
   .dashboard-grid { grid-template-columns: 1fr 1fr; }
   .dashboard-grid .span-3 { grid-column: span 2; }
@@ -51,53 +54,57 @@
         <button class="filter-btn active" onclick="setRange('today',this)">วันนี้</button>
         <button class="filter-btn" onclick="setRange('week',this)">สัปดาห์นี้</button>
         <button class="filter-btn" onclick="setRange('month',this)">เดือนนี้</button>
+        <button class="filter-btn" onclick="setRange('all',this)">ทั้งหมด</button>
       </div>
 
-      <!-- Stats -->
-      <div class="stats-grid" id="statsGrid"></div>
+      <div id="loadingBar" class="loading-overlay">
+        <div class="spinner-sm"></div>
+        <div style="font-size:14px">กำลังโหลดข้อมูลจาก Google Sheet...</div>
+      </div>
 
-      <!-- Charts & Lists -->
-      <div class="dashboard-grid">
-        <!-- Donut + Attendance Chart -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">สรุปการมาเรียน</div>
-              <div class="card-subtitle" id="donutSubtitle">วันนี้</div>
+      <div id="dashboardContent" style="display:none">
+        <!-- Stats -->
+        <div class="stats-grid" id="statsGrid"></div>
+
+        <!-- Charts & Lists -->
+        <div class="dashboard-grid">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">สรุปการมาเรียน</div>
+                <div class="card-subtitle" id="donutSubtitle">วันนี้</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px">
+              <canvas id="donutChart" width="180" height="180" style="max-width:180px"></canvas>
+              <div id="donutLegend" style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center"></div>
             </div>
           </div>
-          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px">
-            <canvas id="donutChart" width="180" height="180" style="max-width:180px"></canvas>
-            <div id="donutLegend" style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center"></div>
-          </div>
-        </div>
 
-        <!-- Weekly trend -->
-        <div class="card span-2">
-          <div class="card-header">
-            <div>
-              <div class="card-title">แนวโน้มการมาเรียน</div>
-              <div class="card-subtitle">7 วันล่าสุด</div>
+          <div class="card span-2">
+            <div class="card-header">
+              <div>
+                <div class="card-title">แนวโน้มการมาเรียน</div>
+                <div class="card-subtitle">7 วันล่าสุด</div>
+              </div>
             </div>
+            <canvas id="trendChart" height="120"></canvas>
           </div>
-          <canvas id="trendChart" height="120"></canvas>
-        </div>
 
-        <!-- Classroom ranking -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title">อันดับห้องเรียน</div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">อันดับห้องเรียน</div>
+            </div>
+            <div id="classRanking"></div>
           </div>
-          <div id="classRanking"></div>
-        </div>
 
-        <!-- Recent check-ins -->
-        <div class="card span-2">
-          <div class="card-header">
-            <div class="card-title">การเช็คชื่อล่าสุด</div>
-            <a href="attendance.html" class="btn btn-ghost" style="font-size:13px">ดูทั้งหมด →</a>
+          <div class="card span-2">
+            <div class="card-header">
+              <div class="card-title">การเช็คชื่อล่าสุด</div>
+              <a href="attendance.html" class="btn btn-ghost" style="font-size:13px">ดูทั้งหมด →</a>
+            </div>
+            <div id="recentCheckins"></div>
           </div>
-          <div id="recentCheckins"></div>
         </div>
       </div>
     </main>
@@ -106,53 +113,29 @@
 
 <script src="scripts/config.js"></script>
 <script src="scripts/auth.js"></script>
+<script src="scripts/api.js"></script>
 <script>
 requireAuth();
 let currentRange = 'today';
 let donutChart, trendChart;
+let _students = [], _attendance = [];
 
 document.addEventListener('DOMContentLoaded', () => {
   renderSidebar('dashboard');
   renderTopbar('แดชบอร์ด', 'ภาพรวมระบบเช็คชื่อ');
-  initDashboard();
 
-  // ── แสดง banner เมื่อ email ไม่อยู่ใน ROLE_MAP ──
+  // แสดง banner เมื่อ email ไม่อยู่ใน ROLE_MAP
   const warnEmail = sessionStorage.getItem('_roleWarning');
   if (warnEmail) {
     sessionStorage.removeItem('_roleWarning');
-    const roleMap = (typeof CONFIG !== 'undefined' && CONFIG.ROLE_MAP) ? CONFIG.ROLE_MAP : {};
+    const roleMap = CONFIG.ROLE_MAP || {};
     const norm = warnEmail.trim().toLowerCase();
-    let inMap = false;
-    for (const k of Object.keys(roleMap)) {
-      if (k.trim().toLowerCase() === norm) { inMap = true; break; }
-    }
+    const inMap = Object.keys(roleMap).some(k => k.trim().toLowerCase() === norm);
     if (!inMap) showRoleNotInMapBanner(warnEmail);
   }
-});
 
-function showRoleNotInMapBanner(email) {
-  const b = document.createElement('div');
-  b.id = 'roleWarnBanner';
-  b.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#1e1e2e;border:2px solid #f59e0b;border-radius:14px;padding:18px 22px;max-width:520px;width:93%;box-shadow:0 8px 36px rgba(0,0,0,.7);font-family:IBM Plex Sans Thai,sans-serif;font-size:13px;line-height:1.6';
-  b.innerHTML = `
-    <div style="font-weight:700;color:#f59e0b;margin-bottom:10px;font-size:15px">⚠️ Login สำเร็จ แต่ได้ Role = viewer เพราะ email ไม่ตรง</div>
-    <div style="color:#94a3b8;margin-bottom:6px">Google ใช้ email นี้ (คลิกเพื่อคัดลอก):</div>
-    <div onclick="navigator.clipboard.writeText('${email}').then(()=>{this.style.background='#052e16';this.style.borderColor='#10b981'})" title="คลิกเพื่อคัดลอก"
-      style="background:#0f0f1a;padding:10px 14px;border-radius:8px;font-family:monospace;color:#10b981;font-size:15px;margin-bottom:12px;word-break:break-all;cursor:pointer;border:1px solid #1f2937">
-      ${email} 📋
-    </div>
-    <div style="color:#94a3b8;margin-bottom:6px">เปิด <b>scripts/config.js</b> แล้วเพิ่มใน ROLE_MAP:</div>
-    <div onclick="navigator.clipboard.writeText("'${email}': 'admin',")" title="คลิกเพื่อคัดลอก"
-      style="background:#0f0f1a;padding:10px 14px;border-radius:8px;font-family:monospace;color:#a78bfa;font-size:13px;margin-bottom:14px;cursor:pointer;border:1px solid #1f2937">
-      '${email}': 'admin',  📋
-    </div>
-    <div style="display:flex;gap:8px">
-      <button onclick="document.getElementById('roleWarnBanner').remove()" style="flex:1;padding:10px;background:#374151;color:#fff;border:none;border-radius:9px;cursor:pointer;font-size:13px;font-family:inherit">ปิด</button>
-      <button onclick="window.location.href='index.html'" style="flex:1;padding:10px;background:#4f46e5;color:#fff;border:none;border-radius:9px;cursor:pointer;font-size:13px;font-family:inherit">Login ใหม่</button>
-    </div>
-  `;
-  document.body.appendChild(b);
-}
+  initDashboard();
+});
 
 function setRange(range, btn) {
   currentRange = range;
@@ -161,83 +144,97 @@ function setRange(range, btn) {
   initDashboard();
 }
 
-function filterAttendanceByRange(range) {
-  const all = getAttendance();
-  const { start, end } = getDateRange(range);
-  return all.filter(r => {
-    const d = new Date(r.date);
-    return d >= start && d <= end;
-  });
-}
+async function initDashboard() {
+  document.getElementById('loadingBar').style.display = 'flex';
+  document.getElementById('dashboardContent').style.display = 'none';
 
-function initDashboard() {
-  const records = filterAttendanceByRange(currentRange);
-  const students = getStudents();
-  const total = students.length;
+  try {
+    // ดึงข้อมูลพร้อมกันจาก Google Sheet
+    const today = new Date().toISOString().split('T')[0];
+    const { start, end } = currentRange === 'today'
+      ? { start: today, end: today }
+      : getDateRange(currentRange);
+    const startStr = currentRange === 'today' ? today : start.toISOString().split('T')[0];
+    const endStr   = currentRange === 'today' ? today : end.toISOString().split('T')[0];
 
-  const counts = { present: 0, late: 0, absent: 0, leave: 0 };
-  const seen = new Set();
-  records.forEach(r => {
-    if (!seen.has(r.studentId + r.date)) {
-      seen.add(r.studentId + r.date);
-      counts[r.status] = (counts[r.status] || 0) + 1;
-    }
-  });
+    const [students, attendance] = await Promise.all([
+      API.getStudents(),
+      API.getAttendance(
+        currentRange === 'all'
+          ? {}
+          : { dateFrom: startStr, dateTo: endStr }
+      ),
+    ]);
 
-  const daysCount = currentRange === 'today' ? 1 : currentRange === 'week' ? 5 : 20;
-  const expectedTotal = total * daysCount;
-  const presentRate = expectedTotal > 0 ? ((counts.present / expectedTotal) * 100).toFixed(1) : 0;
+    _students   = students;
+    _attendance = attendance;
 
-  renderStats(counts, total, presentRate, daysCount);
-  renderDonut(counts);
-  renderTrend();
-  renderClassRanking(students, records);
-  renderRecentCheckins(records);
+    const counts = { present: 0, late: 0, absent: 0, leave: 0 };
+    const seen   = new Set();
+    attendance.forEach(r => {
+      const key = r.studentId + '_' + r.date;
+      if (!seen.has(key)) {
+        seen.add(key);
+        counts[r.status] = (counts[r.status] || 0) + 1;
+      }
+    });
+
+    const total      = students.length;
+    const daysCount  = currentRange === 'today' ? 1 : currentRange === 'week' ? 5 : 20;
+    const expected   = total * daysCount;
+    const presentRate = expected > 0 ? ((counts.present / expected) * 100).toFixed(1) : 0;
+
+    document.getElementById('loadingBar').style.display = 'none';
+    document.getElementById('dashboardContent').style.display = 'block';
+
+    renderStats(counts, total, presentRate, daysCount);
+    renderDonut(counts);
+    await renderTrend();
+    renderClassRanking(students, attendance);
+    renderRecentCheckins(attendance);
+
+  } catch(err) {
+    document.getElementById('loadingBar').innerHTML = `
+      <div style="font-size:32px">❌</div>
+      <div style="color:var(--danger);font-weight:600">${err.message}</div>
+      <button class="btn btn-primary" onclick="initDashboard()">ลองใหม่</button>
+    `;
+    console.error('[Dashboard]', err);
+  }
 }
 
 function renderStats(counts, total, presentRate, days) {
   const grid = document.getElementById('statsGrid');
   const statsData = [
-    { label: 'มาเรียน', value: counts.present, icon: '✅', color: '#10b981', change: '+2.1%', up: true },
-    { label: 'สาย', value: counts.late, icon: '⏰', color: '#f59e0b', change: '-0.5%', up: false },
-    { label: 'ขาดเรียน', value: counts.absent, icon: '❌', color: '#ef4444', change: '+1.2%', up: false },
-    { label: 'ลา', value: counts.leave, icon: '📝', color: '#3b82f6', change: '0%', up: true },
+    { label:'มาเรียน',  value:counts.present, icon:'✅', color:'#10b981' },
+    { label:'สาย',      value:counts.late,    icon:'⏰', color:'#f59e0b' },
+    { label:'ขาดเรียน', value:counts.absent,  icon:'❌', color:'#ef4444' },
+    { label:'ลา',       value:counts.leave,   icon:'📝', color:'#3b82f6' },
   ];
-
   grid.innerHTML = statsData.map(s => `
     <div class="stat-card" style="--stat-color:${s.color}">
       <div class="stat-icon">${s.icon}</div>
       <div class="stat-value">${s.value}</div>
       <div class="stat-label">${s.label}</div>
-      <div class="stat-change ${s.up ? 'stat-up' : 'stat-down'}">
-        ${s.up ? '↑' : '↓'} ${s.change} จากเมื่อวาน
-      </div>
     </div>
   `).join('');
 }
 
 function renderDonut(counts) {
-  const ctx = document.getElementById('donutChart').getContext('2d');
-  const data = [counts.present, counts.late, counts.absent, counts.leave];
+  const ctx    = document.getElementById('donutChart').getContext('2d');
+  const data   = [counts.present, counts.late, counts.absent, counts.leave];
   const colors = ['#10b981','#f59e0b','#ef4444','#3b82f6'];
   const labels = ['มาเรียน','สาย','ขาด','ลา'];
 
   if (donutChart) donutChart.destroy();
   donutChart = new Chart(ctx, {
     type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{ data, backgroundColor: colors, borderWidth: 0, hoverOffset: 8 }]
-    },
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0, hoverOffset: 8 }] },
     options: {
       cutout: '72%',
       plugins: {
         legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => ` ${ctx.label}: ${ctx.raw} คน`
-          }
-        }
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw} คน` } }
       },
       animation: { duration: 800, easing: 'easeInOutQuart' }
     }
@@ -252,21 +249,28 @@ function renderDonut(counts) {
   `).join('');
 }
 
-function renderTrend() {
-  const all = getAttendance();
-  const days = [];
-  const present = [], late = [], absent = [];
+async function renderTrend() {
+  // ดึง 7 วันย้อนหลัง
   const today = new Date();
+  const d7ago = new Date(today); d7ago.setDate(today.getDate() - 6);
+  const dateFrom = d7ago.toISOString().split('T')[0];
+  const dateTo   = today.toISOString().split('T')[0];
 
+  let all7 = _attendance;
+  // ถ้า currentRange ไม่ครอบคลุม 7 วัน ให้ดึงเพิ่ม
+  try {
+    all7 = await API.getAttendance({ dateFrom, dateTo });
+  } catch(_) { /* ใช้ _attendance แทน */ }
+
+  const days = [], present = [], late = [], absent = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today); d.setDate(today.getDate() - i);
     if (d.getDay() === 0 || d.getDay() === 6) continue;
     const dateStr = d.toISOString().split('T')[0];
-    const label = d.toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric' });
+    const label   = d.toLocaleDateString('th-TH', { weekday:'short', day:'numeric' });
     days.push(label);
-
-    const dayRec = all.filter(r => r.date === dateStr);
-    const seen = new Set();
+    const dayRec  = all7.filter(r => r.date === dateStr);
+    const seen    = new Set();
     let p=0, l=0, a=0;
     dayRec.forEach(r => {
       if (!seen.has(r.studentId)) {
@@ -281,27 +285,22 @@ function renderTrend() {
 
   const ctx = document.getElementById('trendChart').getContext('2d');
   if (trendChart) trendChart.destroy();
-
   trendChart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: days,
       datasets: [
-        { label: 'มาเรียน', data: present, backgroundColor: 'rgba(16,185,129,0.8)', borderRadius: 4 },
-        { label: 'สาย', data: late, backgroundColor: 'rgba(245,158,11,0.8)', borderRadius: 4 },
-        { label: 'ขาด', data: absent, backgroundColor: 'rgba(239,68,68,0.8)', borderRadius: 4 },
+        { label:'มาเรียน', data:present, backgroundColor:'rgba(16,185,129,0.8)', borderRadius:4 },
+        { label:'สาย',     data:late,    backgroundColor:'rgba(245,158,11,0.8)',  borderRadius:4 },
+        { label:'ขาด',     data:absent,  backgroundColor:'rgba(239,68,68,0.8)',   borderRadius:4 },
       ]
     },
     options: {
       responsive: true,
-      plugins: {
-        legend: {
-          labels: { color: '#94a3b8', font: { family: 'IBM Plex Sans Thai', size: 12 } }
-        }
-      },
+      plugins: { legend: { labels: { color:'#94a3b8', font:{ family:'IBM Plex Sans Thai', size:12 } } } },
       scales: {
-        x: { stacked: true, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b' } },
-        y: { stacked: true, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b' } }
+        x: { stacked:true, grid:{ color:'rgba(255,255,255,0.04)' }, ticks:{ color:'#64748b' } },
+        y: { stacked:true, grid:{ color:'rgba(255,255,255,0.04)' }, ticks:{ color:'#64748b' } }
       },
       animation: { duration: 600 }
     }
@@ -311,52 +310,72 @@ function renderTrend() {
 function renderClassRanking(students, records) {
   const roomMap = {};
   students.forEach(s => {
-    const key = `${s.classLevel || s.class || '?'}/${s.room}`;
-    if (!roomMap[key]) roomMap[key] = { total: 0, present: 0 };
+    const key = `${s.classLevel||'?'}/${s.room||'?'}`;
+    if (!roomMap[key]) roomMap[key] = { total:0, present:0 };
     roomMap[key].total++;
   });
-
   records.forEach(r => {
-    const s = students.find(st => (st.id === r.studentId || st.studentId === r.studentId));
+    const s = students.find(st => (st.studentId||st.id) === r.studentId);
     if (!s) return;
-    const key = `${s.classLevel || s.class || '?'}/${s.room}`;
+    const key = `${s.classLevel||'?'}/${s.room||'?'}`;
     if (roomMap[key] && r.status === 'present') roomMap[key].present++;
   });
 
   const rooms = Object.entries(roomMap).map(([name, data]) => ({
-    name,
-    pct: data.total > 0 ? (data.present / data.total * 100) : 0
-  })).sort((a, b) => b.pct - a.pct).slice(0, 6);
+    name, pct: data.total > 0 ? (data.present / data.total * 100) : 0
+  })).sort((a,b) => b.pct - a.pct).slice(0, 6);
 
-  document.getElementById('classRanking').innerHTML = rooms.map((r, i) => `
-    <div class="class-row">
-      <div style="font-size:18px;font-weight:800;color:var(--text-muted);min-width:24px;text-align:center">${i+1}</div>
-      <div class="class-bar-wrap">
-        <div class="class-name">ชั้น ${r.name}</div>
-        <div class="class-bar"><div class="class-bar-fill" style="width:${r.pct}%"></div></div>
+  document.getElementById('classRanking').innerHTML = rooms.length
+    ? rooms.map((r, i) => `
+      <div class="class-row">
+        <div style="font-size:18px;font-weight:800;color:var(--text-muted);min-width:24px;text-align:center">${i+1}</div>
+        <div class="class-bar-wrap">
+          <div class="class-name">ชั้น ${r.name}</div>
+          <div class="class-bar"><div class="class-bar-fill" style="width:${r.pct.toFixed(0)}%"></div></div>
+        </div>
+        <div class="class-pct">${r.pct.toFixed(0)}%</div>
       </div>
-      <div class="class-pct">${r.pct.toFixed(0)}%</div>
-    </div>
-  `).join('');
+    `).join('')
+    : '<div style="text-align:center;padding:20px;color:var(--text-muted)">ยังไม่มีข้อมูล</div>';
 }
 
 function renderRecentCheckins(records) {
   const recent = [...records]
-    .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
+    .sort((a,b) => (b.date + (b.time||'')).localeCompare(a.date + (a.time||'')))
     .slice(0, 8);
 
-  document.getElementById('recentCheckins').innerHTML = recent.map(r => {
-    const s = STATUS_LABELS[r.status];
-    return `
-      <div class="recent-item">
-        <div class="recent-time">${r.time}</div>
-        <div class="avatar-initials avatar" style="font-size:12px;background:linear-gradient(135deg,#4f46e5,#10b981)">${r.studentName.slice(0,2)}</div>
-        <div class="recent-name">${r.studentName}<span class="text-muted text-sm"> · ${r.classLevel || r.class || ''}/${r.room}</span></div>
-        <span class="badge ${s.badge}">${s.icon} ${s.label}</span>
-        <span style="font-size:11px;color:var(--text-muted)">${r.method === 'face' ? '📷' : '✍️'}</span>
-      </div>
-    `;
-  }).join('');
+  document.getElementById('recentCheckins').innerHTML = recent.length
+    ? recent.map(r => {
+        const s = STATUS_LABELS[r.status] || STATUS_LABELS['absent'];
+        const name = r.studentName || r.studentId || '—';
+        return `
+          <div class="recent-item">
+            <div class="recent-time">${r.time || '—'}</div>
+            <div class="avatar-initials avatar" style="font-size:12px;background:linear-gradient(135deg,#4f46e5,#10b981)">${name.slice(0,2)}</div>
+            <div class="recent-name">${name}<span class="text-muted text-sm"> · ${r.classLevel||r.class||''}/${r.room||''}</span></div>
+            <span class="badge ${s.badge}">${s.icon} ${s.label}</span>
+            <span style="font-size:11px;color:var(--text-muted)">${r.method==='face'?'📷':'✍️'}</span>
+          </div>`;
+      }).join('')
+    : '<div style="text-align:center;padding:20px;color:var(--text-muted)">ยังไม่มีการเช็คชื่อ</div>';
+}
+
+function showRoleNotInMapBanner(email) {
+  const b = document.createElement('div');
+  b.id = 'roleWarnBanner';
+  b.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#1e1e2e;border:2px solid #f59e0b;border-radius:14px;padding:18px 22px;max-width:520px;width:93%;box-shadow:0 8px 36px rgba(0,0,0,.7);font-family:IBM Plex Sans Thai,sans-serif;font-size:13px;line-height:1.6';
+  b.innerHTML = `
+    <div style="font-weight:700;color:#f59e0b;margin-bottom:10px;font-size:15px">⚠️ Login สำเร็จ แต่ได้ Role = viewer</div>
+    <div style="color:#94a3b8;margin-bottom:6px">Google ใช้ email นี้ (คลิกเพื่อคัดลอก):</div>
+    <div onclick="navigator.clipboard.writeText('${email}')" style="background:#0f0f1a;padding:10px 14px;border-radius:8px;font-family:monospace;color:#10b981;font-size:15px;margin-bottom:12px;word-break:break-all;cursor:pointer;border:1px solid #1f2937">
+      ${email} 📋
+    </div>
+    <div style="color:#94a3b8;margin-bottom:6px">เพิ่มใน <b>scripts/config.js</b> → ROLE_MAP</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('roleWarnBanner').remove()" style="flex:1;padding:10px;background:#374151;color:#fff;border:none;border-radius:9px;cursor:pointer;font-size:13px;font-family:inherit">ปิด</button>
+      <button onclick="window.location.href='index.html'" style="flex:1;padding:10px;background:#4f46e5;color:#fff;border:none;border-radius:9px;cursor:pointer;font-size:13px;font-family:inherit">Login ใหม่</button>
+    </div>`;
+  document.body.appendChild(b);
 }
 </script>
 </body>

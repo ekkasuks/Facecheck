@@ -46,6 +46,7 @@
     <header class="topbar" id="topbar"></header>
     <main class="page-content">
       <div class="settings-layout">
+
         <!-- Settings Nav -->
         <div class="settings-nav">
           <div class="settings-nav-item active" onclick="switchSettingsTab('school',this)">🏫 ข้อมูลโรงเรียน</div>
@@ -69,11 +70,11 @@
               <div class="setting-section-title">ข้อมูลทั่วไป</div>
               <div class="form-group">
                 <label class="form-label">ชื่อโรงเรียน</label>
-                <input type="text" class="form-input" id="schoolName" value="โรงเรียนสาธิตมหาวิทยาลัย">
+                <input type="text" class="form-input" id="schoolName">
               </div>
               <div class="form-group">
                 <label class="form-label">ชื่อย่อ</label>
-                <input type="text" class="form-input" id="schoolShort" value="ร.ร.สาธิต">
+                <input type="text" class="form-input" id="schoolShort">
               </div>
               <div class="form-group">
                 <label class="form-label">URL โลโก้โรงเรียน</label>
@@ -120,19 +121,13 @@
               <div class="setting-row">
                 <div class="setting-info">
                   <div class="setting-label">ความแม่นยำขั้นต่ำ</div>
-                  <div class="setting-desc">ต่ำกว่านี้จะถือว่าไม่รู้จัก (0.1 = เข้มงวดมาก, 0.7 = ผ่อนคลาย)</div>
+                  <div class="setting-desc">ต่ำกว่านี้จะถือว่าไม่รู้จัก (0.1 = เข้มงวด, 0.9 = ผ่อนคลาย)</div>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px">
-                  <input type="range" id="threshold" min="0.1" max="0.9" step="0.05" value="0.5" oninput="document.getElementById('thresholdVal').textContent=this.value" style="width:100px">
+                  <input type="range" id="threshold" min="0.1" max="0.9" step="0.05" value="0.5"
+                    oninput="document.getElementById('thresholdVal').textContent=this.value" style="width:100px">
                   <span id="thresholdVal" style="font-weight:700;min-width:30px">0.5</span>
                 </div>
-              </div>
-              <div class="setting-row">
-                <div class="setting-info">
-                  <div class="setting-label">บันทึกภาพ Unknown Face</div>
-                  <div class="setting-desc">เซฟรูปที่ไม่รู้จักลงใน Drive โฟลเดอร์ "Unknown"</div>
-                </div>
-                <label class="toggle"><input type="checkbox" checked id="saveUnknown"><div class="toggle-slider"></div></label>
               </div>
               <div class="setting-row">
                 <div class="setting-info">
@@ -154,29 +149,29 @@
               <div class="api-config-card">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
                   <div style="font-weight:700">Apps Script Endpoint</div>
-                  <span class="api-status disconnected" id="apiStatus">⚡ ไม่ได้เชื่อมต่อ</span>
+                  <span class="api-status disconnected" id="apiStatus">⚡ ยังไม่ทดสอบ</span>
                 </div>
-                <input type="text" class="form-input" id="apiUrl" placeholder="https://script.google.com/macros/s/AKfycbxxqJKga6G1qeLmmp1jzzrZJt2ait7iORBiSXyY95svcKJFCqYnH8RBRyRS1L58JnQk/exec" style="margin-bottom:10px">
+                <input type="text" class="form-input" id="apiUrl" style="margin-bottom:10px">
                 <div style="display:flex;gap:8px">
                   <button class="btn btn-primary" onclick="testAPIConnection()">🔍 ทดสอบการเชื่อมต่อ</button>
-                  <button class="btn btn-ghost" onclick="saveApiSettings()">💾 บันทึก</button>
+                  <button class="btn btn-ghost" onclick="saveApiSettings()">💾 บันทึก URL</button>
+                </div>
+                <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">
+                  ⚠️ การแก้ไข URL จะมีผลหลัง reload หน้า
                 </div>
               </div>
               <div class="api-config-card">
-                <div style="font-weight:700;margin-bottom:14px">Google OAuth 2.0</div>
-                <input type="text" class="form-input" id="googleClientId" placeholder="927009801291-kevld3oikvb61borggjd1uul8mbhmkvk.apps.googleusercontent.com">
-                <div style="margin-top:10px">
-                  <button class="btn btn-ghost" onclick="testOAuth()">🔐 ทดสอบ Google Login</button>
-                </div>
+                <div style="font-weight:700;margin-bottom:14px">Google OAuth 2.0 Client ID</div>
+                <input type="text" class="form-input" id="googleClientId">
               </div>
             </div>
             <div class="setting-section">
-              <div class="setting-section-title">Google Sheet Schema</div>
+              <div class="setting-section-title">โครงสร้าง Google Sheet</div>
               <div style="background:var(--bg-card2);border-radius:var(--radius-sm);padding:16px;font-size:12px;color:var(--text-muted);font-family:monospace;line-height:2">
                 <div>📋 <strong>Students</strong>: studentId, prefix, firstName, lastName, classLevel, room, number, gender, faceImageUrl, faceDescriptorJson, activeStatus</div>
-                <div>📋 <strong>Attendance</strong>: attendanceId, date, time, studentId, status, method, deviceId, note</div>
-                <div>📋 <strong>Users</strong>: email, name, role, allowedClassRoom</div>
-                <div>📋 <strong>Settings</strong>: schoolName, schoolLogoUrl, checkDuplicateMinutes, lateTime, absentTime</div>
+                <div>📋 <strong>Attendance</strong>: attendanceId, date, time, studentId, studentName, classLevel, room, status, method, deviceId, note</div>
+                <div>📋 <strong>Users</strong>: email, name, role, allowedClassRoom, passwordHash</div>
+                <div>📋 <strong>Settings</strong>: schoolName, schoolLogoUrl, checkDuplicateMinutes, lateTime, absentTime, faceThreshold</div>
               </div>
             </div>
           </div>
@@ -187,10 +182,11 @@
               <div class="card-title">👥 จัดการผู้ใช้งาน</div>
               <button class="btn btn-primary" onclick="openAddUserModal()">+ เพิ่มผู้ใช้</button>
             </div>
-            <div class="table-wrap">
+            <div id="usersLoading" style="padding:30px;text-align:center;color:var(--text-muted)">กำลังโหลด...</div>
+            <div class="table-wrap" id="usersTableWrap" style="display:none">
               <table class="user-table">
                 <thead>
-                  <tr><th>Avatar</th><th>ชื่อ</th><th>อีเมล</th><th>บทบาท</th><th>ห้องเรียน</th><th>จัดการ</th></tr>
+                  <tr><th>Avatar</th><th>ชื่อ</th><th>อีเมล</th><th>บทบาท</th><th>ห้องเรียน</th></tr>
                 </thead>
                 <tbody id="usersTableBody"></tbody>
               </table>
@@ -221,17 +217,6 @@
                 <div class="color-swatch" style="background:#7c3aed" data-color="#7c3aed" onclick="selectColor('#7c3aed',this)"></div>
               </div>
             </div>
-            <div class="setting-section">
-              <div class="setting-section-title">การแสดงผล</div>
-              <div class="setting-row">
-                <div class="setting-info"><div class="setting-label">แสดงนาฬิกาบน Topbar</div></div>
-                <label class="toggle"><input type="checkbox" checked id="showClock"><div class="toggle-slider"></div></label>
-              </div>
-              <div class="setting-row">
-                <div class="setting-info"><div class="setting-label">Animation</div><div class="setting-desc">เปิด/ปิด transition effects</div></div>
-                <label class="toggle"><input type="checkbox" checked id="enableAnim"><div class="toggle-slider"></div></label>
-              </div>
-            </div>
           </div>
 
           <!-- Data -->
@@ -242,28 +227,22 @@
             <div class="setting-section">
               <div class="setting-section-title">Export ข้อมูล</div>
               <div style="display:flex;gap:10px;flex-wrap:wrap">
-                <button class="btn btn-ghost" onclick="exportAllData()">📥 Export ข้อมูลทั้งหมด (JSON)</button>
                 <button class="btn btn-ghost" onclick="exportAttendanceCSV()">📊 Export การเช็คชื่อ (CSV)</button>
+                <button class="btn btn-ghost" onclick="exportStudentsCSV()">👥 Export รายชื่อนักเรียน (CSV)</button>
               </div>
             </div>
             <div class="setting-section">
-              <div class="setting-section-title">Import ข้อมูล</div>
-              <div style="display:flex;gap:10px">
-                <label class="btn btn-ghost" style="cursor:pointer">
-                  📤 Import รายชื่อนักเรียน (CSV)
-                  <input type="file" accept=".csv" onchange="importStudentsCSV(this)" style="display:none">
-                </label>
+              <div class="setting-section-title">Import นักเรียน</div>
+              <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted)">
+                รูปแบบ CSV: รหัส, คำนำหน้า, ชื่อ, นามสกุล, ชั้น, ห้อง, เลขที่, เพศ
               </div>
+              <label class="btn btn-ghost" style="cursor:pointer">
+                📤 Import รายชื่อนักเรียน (CSV)
+                <input type="file" accept=".csv" onchange="importStudentsCSV(this)" style="display:none">
+              </label>
             </div>
             <div class="setting-section">
-              <div class="setting-section-title">ล้างข้อมูล</div>
-              <div style="display:flex;gap:10px;flex-wrap:wrap">
-                <button class="btn btn-ghost" onclick="clearAttendanceData()">🗑️ ล้างข้อมูลการเช็คชื่อทั้งหมด</button>
-                <button class="btn btn-danger" onclick="clearAllData()">⚠️ Reset ระบบทั้งหมด</button>
-              </div>
-            </div>
-            <div class="setting-section">
-              <div class="setting-section-title">สถิติข้อมูล</div>
+              <div class="setting-section-title">สถิติข้อมูล (จาก Google Sheet)</div>
               <div id="dataStats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px"></div>
             </div>
           </div>
@@ -276,76 +255,92 @@
 
 <script src="scripts/config.js"></script>
 <script src="scripts/auth.js"></script>
+<script src="scripts/api.js"></script>
 <script>
 requireAuth();
-const mockUsers = [
-  { id: 1, name: 'อาจารย์เอกศักดิ์ ปรีติประสงค์', email: 'admin@school.ac.th', role: 'admin', rooms: 'ทุกห้อง' },
-  { id: 2, name: 'อาจารย์สมใจ ดีงาม', email: 'teacher@school.ac.th', role: 'teacher', rooms: 'ม.1/1' },
-  { id: 3, name: 'ผู้ปกครอง ทดสอบ', email: 'viewer@school.ac.th', role: 'viewer', rooms: '—' },
-];
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   renderSidebar('settings');
   renderTopbar('ตั้งค่าระบบ', 'Configuration & Management');
-  loadSavedSettings();   // โหลดค่าที่บันทึกไว้
-  renderUsersTable();
-  renderDataStats();
   document.getElementById('darkModeToggle').checked = localStorage.getItem('theme') !== 'light';
+
+  // โหลด settings จาก Google Sheet
+  await loadSettingsFromSheet();
+  await renderDataStats();
+
+  // ตั้งค่า API URL fields จาก config
+  document.getElementById('apiUrl').value          = CONFIG.API_URL || '';
+  document.getElementById('googleClientId').value  = CONFIG.GOOGLE_CLIENT_ID || '';
 });
 
-// ── โหลดค่าที่บันทึกไว้ทั้งหมดใส่ form ──────
-function loadSavedSettings() {
-  const s = getSavedSettings();
-
-  // School
-  if (s.schoolName)    document.getElementById('schoolName').value   = s.schoolName;
-  if (s.schoolShort)   document.getElementById('schoolShort').value  = s.schoolShort;
-  if (s.schoolLogo)    document.getElementById('schoolLogo').value   = s.schoolLogo;
-  if (s.schoolAddress) document.getElementById('schoolAddress').value= s.schoolAddress;
-
-  // Attendance
-  if (s.lateTime)   document.getElementById('lateTime').value   = s.lateTime;
-  if (s.absentTime) document.getElementById('absentTime').value = s.absentTime;
-  if (s.dupMinutes) document.getElementById('dupMinutes').value = s.dupMinutes;
-  if (s.threshold) {
-    document.getElementById('threshold').value = s.threshold;
-    document.getElementById('thresholdVal').textContent = s.threshold;
+// ════════════════════════════════════════════
+// โหลด Settings จาก Google Sheet
+// ════════════════════════════════════════════
+async function loadSettingsFromSheet() {
+  try {
+    const s = await API.getSettings();
+    if (s.schoolName)    document.getElementById('schoolName').value    = s.schoolName;
+    if (s.schoolShort)   document.getElementById('schoolShort').value   = s.schoolShort || '';
+    if (s.schoolLogoUrl) document.getElementById('schoolLogo').value    = s.schoolLogoUrl;
+    if (s.schoolAddress) document.getElementById('schoolAddress').value = s.schoolAddress;
+    if (s.lateTime)      document.getElementById('lateTime').value      = s.lateTime;
+    if (s.absentTime)    document.getElementById('absentTime').value    = s.absentTime;
+    if (s.checkDuplicateMinutes) document.getElementById('dupMinutes').value = s.checkDuplicateMinutes;
+    if (s.faceThreshold) {
+      document.getElementById('threshold').value    = s.faceThreshold;
+      document.getElementById('thresholdVal').textContent = s.faceThreshold;
+    }
+    // sync config
+    if (s.schoolName)    CONFIG.SCHOOL_NAME  = s.schoolName;
+    if (s.schoolShort)   CONFIG.SCHOOL_SHORT = s.schoolShort;
+    if (s.lateTime)      CONFIG.LATE_TIME    = s.lateTime;
+    if (s.faceThreshold) CONFIG.FACE_MATCH_THRESHOLD = parseFloat(s.faceThreshold);
+  } catch(err) {
+    console.warn('[Settings] ใช้ค่าจาก config.js:', err.message);
+    // ใช้ค่าจาก config.js เป็น fallback
+    document.getElementById('schoolName').value = CONFIG.SCHOOL_NAME || '';
+    document.getElementById('lateTime').value   = CONFIG.LATE_TIME   || '08:30';
   }
-  if (s.saveUnknown !== undefined)
-    document.getElementById('saveUnknown').checked = s.saveUnknown;
-  if (s.enableTTS !== undefined)
-    document.getElementById('enableTTS').checked = s.enableTTS;
 
-  // API
-  if (s.apiUrl)        document.getElementById('apiUrl').value        = s.apiUrl        || CONFIG.API_URL;
-  if (s.googleClientId)document.getElementById('googleClientId').value= s.googleClientId|| CONFIG.GOOGLE_CLIENT_ID;
-
-  // Appearance
-  if (s.primaryColor) {
-    document.documentElement.style.setProperty('--primary', s.primaryColor);
-    document.querySelectorAll('.color-swatch').forEach(el => {
-      el.classList.toggle('selected', el.dataset.color === s.primaryColor);
-    });
-  }
-  if (s.showClock  !== undefined) document.getElementById('showClock').checked   = s.showClock;
-  if (s.enableAnim !== undefined) document.getElementById('enableAnim').checked  = s.enableAnim;
-
-  // Sync CONFIG object ด้วย
-  if (s.schoolName)  CONFIG.SCHOOL_NAME  = s.schoolName;
-  if (s.schoolShort) CONFIG.SCHOOL_SHORT = s.schoolShort;
-  if (s.lateTime)    CONFIG.LATE_TIME    = s.lateTime;
-  if (s.threshold)   CONFIG.FACE_MATCH_THRESHOLD = parseFloat(s.threshold);
-  if (s.apiUrl)      { CONFIG.API_URL = s.apiUrl; CONFIG._hasRealAPI = !s.apiUrl.includes('YOUR_SCRIPT'); }
+  // โหลด users table
+  await loadUsersTable();
 }
 
-function getSavedSettings() {
-  try { return JSON.parse(localStorage.getItem('fa_settings') || '{}'); } catch(_) { return {}; }
-}
+// ════════════════════════════════════════════
+// Users Table
+// ════════════════════════════════════════════
+async function loadUsersTable() {
+  try {
+    // ตอนนี้แสดง current user + role map
+    const user    = getCurrentUser();
+    const roleMap = CONFIG.ROLE_MAP || {};
+    const rows    = Object.entries(roleMap).map(([email, role]) => ({
+      email, role,
+      name: email === (user?.email || '') ? (user?.name || email) : email.split('@')[0],
+    }));
 
-function saveSettings(patch) {
-  const s = getSavedSettings();
-  Object.assign(s, patch);
-  localStorage.setItem('fa_settings', JSON.stringify(s));
+    if (user && !rows.find(r => r.email === user.email)) {
+      rows.unshift({ email: user.email, role: user.role || 'viewer', name: user.name || user.email });
+    }
+
+    document.getElementById('usersLoading').style.display = 'none';
+    document.getElementById('usersTableWrap').style.display = 'block';
+    document.getElementById('usersTableBody').innerHTML = rows.map(u => {
+      const initials = (u.name||'U').split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+      const rl = ROLE_LABELS[u.role] || { label: u.role, icon: '👤' };
+      const badgeCls = u.role==='admin'?'badge-purple':u.role==='teacher'?'badge-blue':'badge-gray';
+      return `
+        <tr>
+          <td><div class="user-avatar avatar-initials" style="width:36px;height:36px;font-size:13px">${initials}</div></td>
+          <td style="font-weight:600">${u.name}</td>
+          <td style="color:var(--text-muted)">${u.email}</td>
+          <td><span class="badge ${badgeCls}">${rl.icon} ${rl.label}</span></td>
+          <td style="font-size:13px">—</td>
+        </tr>`;
+    }).join('');
+  } catch(err) {
+    document.getElementById('usersLoading').textContent = 'โหลดผู้ใช้ไม่สำเร็จ';
+  }
 }
 
 function switchSettingsTab(tab, el) {
@@ -355,215 +350,226 @@ function switchSettingsTab(tab, el) {
   document.getElementById(`tab-${tab}`).classList.add('active');
 }
 
-function renderUsersTable() {
-  document.getElementById('usersTableBody').innerHTML = mockUsers.map(u => `
-    <tr>
-      <td><div class="user-avatar avatar-initials" style="width:36px;height:36px;font-size:13px">${u.name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div></td>
-      <td style="font-weight:600">${u.name}</td>
-      <td style="color:var(--text-muted)">${u.email}</td>
-      <td><span class="badge ${u.role==='admin'?'badge-purple':u.role==='teacher'?'badge-blue':'badge-gray'}">${ROLE_LABELS[u.role]?.icon} ${ROLE_LABELS[u.role]?.label}</span></td>
-      <td style="font-size:13px">${u.rooms}</td>
-      <td><button class="btn-icon" onclick="showToast('แก้ไขผู้ใช้','${u.name}','info')">✏️</button></td>
-    </tr>
-  `).join('');
+// ════════════════════════════════════════════
+// Data Stats จาก Google Sheet
+// ════════════════════════════════════════════
+async function renderDataStats() {
+  document.getElementById('dataStats').innerHTML =
+    '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:20px">กำลังโหลด...</div>';
+  try {
+    const [students, attendance] = await Promise.all([
+      API.getStudents(),
+      API.getAttendance(),
+    ]);
+    document.getElementById('dataStats').innerHTML = [
+      { label:'นักเรียน',          value:students.length,  icon:'👥' },
+      { label:'บันทึกการเช็คชื่อ', value:attendance.length, icon:'📋' },
+      { label:'มีข้อมูลใบหน้า',    value:students.filter(s=>s.faceDescriptor&&s.faceDescriptor.length).length, icon:'👤' },
+    ].map(s => `
+      <div class="stat-card">
+        <div style="font-size:24px;margin-bottom:6px">${s.icon}</div>
+        <div class="stat-value">${s.value}</div>
+        <div class="stat-label">${s.label}</div>
+      </div>`).join('');
+  } catch(err) {
+    document.getElementById('dataStats').innerHTML =
+      `<div style="grid-column:1/-1;color:var(--danger);padding:10px">❌ ${err.message}</div>`;
+  }
 }
 
-function renderDataStats() {
-  const students = getStudents();
-  const attendance = getAttendance();
-  document.getElementById('dataStats').innerHTML = [
-    { label: 'นักเรียน', value: students.length, icon: '👥' },
-    { label: 'บันทึกการเช็คชื่อ', value: attendance.length, icon: '📋' },
-    { label: 'มีข้อมูลใบหน้า', value: students.filter(s => s.faceDescriptor).length, icon: '👤' },
-  ].map(s => `
-    <div class="stat-card"><div style="font-size:24px;margin-bottom:6px">${s.icon}</div><div class="stat-value">${s.value}</div><div class="stat-label">${s.label}</div></div>
-  `).join('');
-}
-
-function saveSchoolSettings() {
+// ════════════════════════════════════════════
+// Save Settings → Google Sheet
+// ════════════════════════════════════════════
+async function saveSchoolSettings() {
   const name    = document.getElementById('schoolName').value.trim();
   const short   = document.getElementById('schoolShort').value.trim();
   const logo    = document.getElementById('schoolLogo').value.trim();
   const address = document.getElementById('schoolAddress').value.trim();
 
-  CONFIG.SCHOOL_NAME  = name;
-  CONFIG.SCHOOL_SHORT = short;
-
-  saveSettings({ schoolName: name, schoolShort: short, schoolLogo: logo, schoolAddress: address });
-
-  // บันทึกลง GAS ด้วย (ถ้ามี API)
-  if (typeof API !== 'undefined' && CONFIG._hasRealAPI) {
-    API.syncGASToken && API.syncGASToken().then(() => {
-      ['schoolName','schoolLogoUrl','schoolAddress'].forEach(k => {
-        const v = k==='schoolName'?name : k==='schoolLogoUrl'?logo : address;
-        fetch(CONFIG.API_URL, {
-          method:'POST', headers:{'Content-Type':'text/plain'},
-          body: JSON.stringify({ action:'saveSetting', token: JSON.parse(sessionStorage.getItem('user')||'{}').gasToken||'', key:k, value:v }),
-          mode:'cors'
-        }).catch(()=>{});
-      });
-    });
+  try {
+    await Promise.all([
+      API.saveSetting('schoolName',    name),
+      API.saveSetting('schoolShort',   short),
+      API.saveSetting('schoolLogoUrl', logo),
+      API.saveSetting('schoolAddress', address),
+    ]);
+    CONFIG.SCHOOL_NAME  = name;
+    CONFIG.SCHOOL_SHORT = short;
+    showToast('บันทึกสำเร็จ ✅', 'ข้อมูลโรงเรียนอัปเดตใน Google Sheet แล้ว', 'success');
+  } catch(err) {
+    showToast('บันทึกไม่สำเร็จ', err.message, 'error');
   }
-  showToast('บันทึกสำเร็จ ✅', 'ข้อมูลโรงเรียนอัปเดตแล้ว', 'success');
 }
 
-function saveAttendanceSettings() {
+async function saveAttendanceSettings() {
   const lateTime  = document.getElementById('lateTime').value;
   const absentTime= document.getElementById('absentTime').value;
   const dupMin    = document.getElementById('dupMinutes').value;
   const threshold = document.getElementById('threshold').value;
-  const saveUnk   = document.getElementById('saveUnknown').checked;
   const tts       = document.getElementById('enableTTS').checked;
 
-  CONFIG.LATE_TIME            = lateTime;
-  CONFIG.FACE_MATCH_THRESHOLD = parseFloat(threshold);
-  CONFIG.DUPLICATE_CHECK_MINUTES = parseInt(dupMin);
-
-  saveSettings({ lateTime, absentTime, dupMinutes: dupMin, threshold, saveUnknown: saveUnk, enableTTS: tts });
-
-  // sync GAS settings
-  if (typeof API !== 'undefined' && CONFIG._hasRealAPI) {
-    const token = (JSON.parse(sessionStorage.getItem('user')||'{}').gasToken||'');
-    [['lateTime',lateTime],['absentTime',absentTime],['checkDuplicateMinutes',dupMin],['faceThreshold',threshold]].forEach(([k,v]) => {
-      fetch(CONFIG.API_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
-        body:JSON.stringify({action:'saveSetting',token,key:k,value:v}),mode:'cors'}).catch(()=>{});
-    });
+  try {
+    await Promise.all([
+      API.saveSetting('lateTime',              lateTime),
+      API.saveSetting('absentTime',            absentTime),
+      API.saveSetting('checkDuplicateMinutes', dupMin),
+      API.saveSetting('faceThreshold',         threshold),
+    ]);
+    CONFIG.LATE_TIME             = lateTime;
+    CONFIG.FACE_MATCH_THRESHOLD  = parseFloat(threshold);
+    CONFIG.DUPLICATE_CHECK_MINUTES = parseInt(dupMin);
+    showToast('บันทึกสำเร็จ ✅', 'ตั้งค่าการเช็คชื่ออัปเดตใน Google Sheet แล้ว', 'success');
+  } catch(err) {
+    showToast('บันทึกไม่สำเร็จ', err.message, 'error');
   }
-  showToast('บันทึกสำเร็จ ✅', 'ตั้งค่าการเช็คชื่ออัปเดตแล้ว', 'success');
 }
 
 function saveApiSettings() {
   const url      = document.getElementById('apiUrl').value.trim();
   const clientId = document.getElementById('googleClientId').value.trim();
-
-  CONFIG.API_URL           = url;
-  CONFIG.GOOGLE_CLIENT_ID  = clientId;
-  CONFIG._hasRealAPI       = url.length > 0 && !url.includes('YOUR_SCRIPT');
-
-  saveSettings({ apiUrl: url, googleClientId: clientId });
-  showToast('บันทึก API URL ✅', 'reload หน้าเพื่อให้มีผล', 'success');
+  // บันทึกลง sessionStorage สำหรับ session นี้
+  // (ต้องแก้ config.js ถาวร)
+  CONFIG.API_URL          = url;
+  CONFIG.GOOGLE_CLIENT_ID = clientId;
+  CONFIG._hasRealAPI      = url.length > 0 && !url.includes('YOUR_SCRIPT');
+  showToast('บันทึก URL แล้ว ✅', 'ต้องแก้ scripts/config.js ด้วยเพื่อให้ถาวร', 'warning');
 }
 
 async function testAPIConnection() {
   const url = document.getElementById('apiUrl').value;
   if (!url || url.includes('YOUR_SCRIPT')) {
-    showToast('กรุณากรอก API URL จริง', '', 'warning');
-    return;
+    showToast('กรุณากรอก API URL จริง', '', 'warning'); return;
   }
-  showToast('กำลังทดสอบ...', '', 'info');
+  showToast('กำลังทดสอบ...', '', 'info', 2000);
   try {
-    const res = await fetch(url + '?action=ping', { method: 'GET', mode: 'cors' });
-    if (res.ok) {
-      document.getElementById('apiStatus').textContent = '✅ เชื่อมต่อสำเร็จ';
-      document.getElementById('apiStatus').className = 'api-status connected';
-      showToast('เชื่อมต่อสำเร็จ', 'Apps Script พร้อมใช้งาน', 'success');
-    } else throw new Error('HTTP ' + res.status);
-  } catch (err) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action: 'ping' }),
+      mode: 'cors',
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('apiStatus').textContent = '✅ เชื่อมต่อสำเร็จ v' + (data.data?.version||'');
+      document.getElementById('apiStatus').className  = 'api-status connected';
+      showToast('เชื่อมต่อสำเร็จ ✅', 'Apps Script พร้อมใช้งาน', 'success');
+    } else throw new Error(data.error || 'Error');
+  } catch(err) {
+    document.getElementById('apiStatus').textContent = '❌ เชื่อมต่อไม่สำเร็จ';
+    document.getElementById('apiStatus').className  = 'api-status disconnected';
     showToast('เชื่อมต่อไม่สำเร็จ', err.message, 'error');
   }
-}
-
-function testOAuth() {
-  showToast('Google OAuth', 'ทดสอบได้เมื่อ deploy บน GitHub Pages', 'info');
 }
 
 function selectColor(color, el) {
   document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
   el.classList.add('selected');
   document.documentElement.style.setProperty('--primary', color);
-  // บันทึกทันที (ไม่ต้องกดปุ่มบันทึกอีก)
-  saveSettings({ primaryColor: color });
+  localStorage.setItem('fa_primaryColor', color);
   showToast('เปลี่ยนสีแล้ว ✅', 'บันทึกอัตโนมัติ', 'success');
 }
 
 function saveAppearance() {
   const selected = document.querySelector('.color-swatch.selected');
-  const color    = selected ? selected.dataset.color : null;
-  const showClock= document.getElementById('showClock').checked;
-  const enableAnim=document.getElementById('enableAnim').checked;
-
-  if (color) document.documentElement.style.setProperty('--primary', color);
-  document.body.style.setProperty('--transition-speed', enableAnim ? '0.2s' : '0s');
-
-  saveSettings({ primaryColor: color, showClock, enableAnim });
+  if (selected) {
+    localStorage.setItem('fa_primaryColor', selected.dataset.color);
+    document.documentElement.style.setProperty('--primary', selected.dataset.color);
+  }
   showToast('บันทึกการตั้งค่าหน้าตา ✅', '', 'success');
 }
 
 function openAddUserModal() {
-  showToast('เพิ่มผู้ใช้', 'ฟีเจอร์นี้ต้องเชื่อมต่อ Google Apps Script', 'info');
+  showToast('เพิ่มผู้ใช้', 'กรุณาเพิ่ม email ใน ROLE_MAP ใน scripts/config.js', 'info');
 }
 
-function exportAllData() {
-  const data = {
-    students: getStudents(),
-    attendance: getAttendance(),
-    exportedAt: new Date().toISOString()
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `faceattend_backup_${new Date().toISOString().split('T')[0]}.json`;
-  a.click();
-  showToast('Export สำเร็จ', '', 'success');
+// ════════════════════════════════════════════
+// Export / Import ข้อมูล
+// ════════════════════════════════════════════
+async function exportAttendanceCSV() {
+  try {
+    showToast('กำลังดึงข้อมูล...', '', 'info', 2000);
+    const records = await API.getAttendance();
+    const rows = [
+      ['วันที่','เวลา','รหัส','ชื่อ','ชั้น','ห้อง','สถานะ','วิธี'],
+      ...records.map(r => [
+        r.date||'', r.time||'', r.studentId||'', r.studentName||'',
+        r.classLevel||'', r.room||'',
+        STATUS_LABELS[r.status]?.label || r.status || '',
+        r.method||''
+      ])
+    ];
+    downloadCSV(rows, `การเช็คชื่อ_${new Date().toLocaleDateString('th-TH').replace(/\//g,'-')}.csv`);
+    showToast('Export CSV สำเร็จ ✅', `${records.length} รายการ`, 'success');
+  } catch(err) {
+    showToast('Export ล้มเหลว', err.message, 'error');
+  }
 }
 
-function exportAttendanceCSV() {
-  const records = getAttendance();
-  const rows = [
-    ['วันที่','เวลา','รหัส','ชื่อ','ชั้น','ห้อง','สถานะ','วิธี'],
-    ...records.map(r => [r.date, r.time, r.studentId, r.studentName, r.class, r.room, STATUS_LABELS[r.status].label, r.method])
-  ];
-  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `attendance_${new Date().toISOString().split('T')[0]}.csv`;
-  a.click();
-  showToast('Export CSV สำเร็จ', `${records.length} รายการ`, 'success');
+async function exportStudentsCSV() {
+  try {
+    const students = await API.getStudents();
+    const rows = [
+      ['รหัส','คำนำหน้า','ชื่อ','นามสกุล','ชั้น','ห้อง','เลขที่','เพศ','มีใบหน้า'],
+      ...students.map(s => [
+        s.studentId||s.id||'', s.prefix||'', s.firstName||'', s.lastName||'',
+        s.classLevel||'', s.room||'', s.number||s.no||'', s.gender||'',
+        !!(s.faceDescriptor&&s.faceDescriptor.length) ? 'ใช่' : 'ไม่',
+      ])
+    ];
+    downloadCSV(rows, `นักเรียน_${new Date().toLocaleDateString('th-TH').replace(/\//g,'-')}.csv`);
+    showToast('Export CSV สำเร็จ ✅', `${students.length} คน`, 'success');
+  } catch(err) {
+    showToast('Export ล้มเหลว', err.message, 'error');
+  }
 }
 
-function importStudentsCSV(input) {
-  const file = input.files[0];
-  if (!file) return;
+async function importStudentsCSV(input) {
+  const file = input.files[0]; if (!file) return;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     const lines = e.target.result.split('\n').slice(1);
-    let count = 0;
-    const students = getStudents();
-    lines.forEach(line => {
-      if (!line.trim()) return;
+    let count = 0, errors = 0;
+    for (const line of lines) {
+      if (!line.trim()) continue;
       const cols = line.split(',').map(c => c.replace(/^"|"$/g,'').trim());
       if (cols.length >= 7) {
         const [id, prefix, firstName, lastName, cls, room, no, gender] = cols;
-        if (!id) return;
-        if (!students.find(s => s.id === id)) {
-          students.push({ id, prefix: prefix||'ด.ช.', firstName, lastName, class: cls||'ม.1', room: room||'1', no: parseInt(no)||1, gender: gender||'ชาย', status:'active', imageUrl:'', faceDescriptor: null });
+        if (!id || !firstName || !lastName) continue;
+        try {
+          await API.addStudent({
+            studentId: id, prefix: prefix||'ด.ช.', firstName, lastName,
+            classLevel: cls||'ม.1', room: room||'1', number: parseInt(no)||1,
+            gender: gender||'ชาย', activeStatus:'active',
+          });
           count++;
-        }
+        } catch(_) { errors++; }
       }
-    });
-    saveStudents(students);
-    showToast('Import สำเร็จ', `เพิ่ม ${count} คน`, 'success');
-    renderDataStats();
+    }
+    showToast('Import สำเร็จ', `เพิ่ม ${count} คน${errors?' (ข้ามซ้ำ '+errors+' คน)':''}`, 'success');
+    await renderDataStats();
   };
   reader.readAsText(file, 'UTF-8');
 }
 
-function clearAttendanceData() {
-  confirm('ล้างข้อมูลการเช็คชื่อ', 'ต้องการลบข้อมูลการเช็คชื่อทั้งหมด?', () => {
-    localStorage.removeItem('fa_attendance');
-    showToast('ล้างข้อมูลสำเร็จ', '', 'success');
-    renderDataStats();
-  });
+function downloadCSV(rows, filename) {
+  const csv  = rows.map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const blob = new Blob(['\ufeff' + csv], { type:'text/csv;charset=utf-8' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
 }
 
-function clearAllData() {
-  confirm('⚠️ Reset ระบบ', 'ต้องการล้างข้อมูลทั้งหมดรวมถึงข้อมูลนักเรียน? ไม่สามารถกู้คืนได้', () => {
-    localStorage.clear();
-    showToast('Reset สำเร็จ', 'กำลัง reload...', 'info');
-    setTimeout(() => location.reload(), 1500);
-  });
-}
+// โหลด primary color ที่บันทึกไว้
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('fa_primaryColor');
+  if (saved) {
+    document.documentElement.style.setProperty('--primary', saved);
+    document.querySelectorAll('.color-swatch').forEach(el => {
+      el.classList.toggle('selected', el.dataset.color === saved);
+    });
+  }
+});
 </script>
 </body>
 </html>
