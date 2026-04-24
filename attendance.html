@@ -20,7 +20,7 @@
 .video-wrap{position:relative;background:#000;aspect-ratio:4/3;overflow:hidden}
 #videoEl{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
 #faceCanvas{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none}
-.scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(79,70,229,.9),rgba(16,185,129,.9),transparent);opacity:0;transition:opacity .3s}
+.scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(79,70,229,.9),rgba(16,185,129,.9),transparent);opacity:0}
 .scan-line.on{opacity:1;animation:scanAnim 3s ease-in-out infinite}
 @keyframes scanAnim{0%{top:8%}50%{top:88%}100%{top:8%}}
 .overlay-msg{position:absolute;bottom:10px;left:10px;right:10px;background:rgba(0,0,0,.72);border-radius:8px;padding:8px 12px;font-size:13px;text-align:center;backdrop-filter:blur(4px)}
@@ -41,9 +41,8 @@
 .result-card.rc-success{border-color:var(--accent);background:rgba(16,185,129,.06);animation:rcPop .4s cubic-bezier(.16,1,.3,1)}
 .result-card.rc-late{border-color:var(--warning);background:rgba(245,158,11,.06);animation:rcPop .4s cubic-bezier(.16,1,.3,1)}
 .result-card.rc-dup{border-color:var(--warning);background:rgba(245,158,11,.04)}
-.result-card.rc-unknown{border-color:var(--danger);background:rgba(239,68,68,.05);animation:rcShake .4s ease}
+.result-card.rc-err{border-color:var(--danger);background:rgba(239,68,68,.05)}
 @keyframes rcPop{from{transform:scale(.95);opacity:0}to{transform:scale(1);opacity:1}}
-@keyframes rcShake{0%,100%{transform:translateX(0)}25%,75%{transform:translateX(-5px)}50%{transform:translateX(5px)}}
 .r-avatar{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#fff;flex-shrink:0}
 .r-name{font-size:17px;font-weight:800;line-height:1.2}
 .r-meta{font-size:13px;color:var(--text-muted);margin-top:3px}
@@ -109,7 +108,7 @@
               <span style="font-size:12px;color:#444">ระบบต้องการสิทธิ์ใช้กล้อง</span>
             </div>
             <div class="model-overlay hidden" id="modelOverlay">
-              <div class="loading-spinner" style="width:32px;height:32px;border-width:3px"></div>
+              <div style="width:32px;height:32px;border:3px solid rgba(255,255,255,.1);border-top-color:#4f46e5;border-radius:50%;animation:livePulse 1s linear infinite"></div>
               <div style="font-size:14px;font-weight:600;color:#fff">กำลังโหลด AI Model...</div>
               <div class="model-bar"><div class="model-fill" id="modelFill" style="width:0%"></div></div>
               <div style="font-size:12px;color:#888" id="modelStatusMsg">เตรียมพร้อม...</div>
@@ -118,8 +117,8 @@
           <div class="cam-controls">
             <button class="cbtn cbtn-primary" id="btnOpen" onclick="openCamera()">▶ เปิดกล้อง</button>
             <button class="cbtn" id="btnClose" onclick="closeCamera()" disabled>⏹ ปิด</button>
-            <button class="cbtn" id="btnSnap" onclick="takeSnap()" disabled title="Snapshot">📸</button>
-            <button class="cbtn" id="btnFlip" onclick="flipCam()" disabled title="พลิกกล้อง">🔄</button>
+            <button class="cbtn" id="btnSnap" onclick="takeSnap()" disabled>📸</button>
+            <button class="cbtn" id="btnFlip" onclick="flipCam()" disabled>🔄</button>
           </div>
           <div class="ai-info-bar">
             <span>🧠 face-api.js v1.7</span>
@@ -144,7 +143,7 @@
               <span style="font-size:14px;font-weight:700">📋 เช็คชื่อวันนี้</span>
               <div style="display:flex;gap:8px;align-items:center">
                 <span class="badge badge-blue" id="todayBadge">0 คน</span>
-                <button class="btn-icon" style="width:28px;height:28px;font-size:12px" onclick="clearDisplay()" title="ล้าง">↺</button>
+                <button class="btn-icon" style="width:28px;height:28px;font-size:12px" onclick="refreshTodayList()" title="รีเฟรช">🔄</button>
               </div>
             </div>
             <div class="t-list" id="todayList">
@@ -159,7 +158,7 @@
         <div class="card">
           <div class="card-header">
             <div><div class="card-title">✍️ เช็คชื่อ Manual</div><div class="card-subtitle">เลือกห้องและระบุสถานะแต่ละคน</div></div>
-            <button class="btn btn-primary" onclick="saveManual()">💾 บันทึก</button>
+            <button class="btn btn-primary" id="btnSaveManual" onclick="saveManual()">💾 บันทึกลง Google Sheet</button>
           </div>
           <div class="form-grid" style="margin-bottom:12px">
             <div class="form-group" style="margin:0">
@@ -204,46 +203,38 @@
 requireAuth();
 
 // ── State ─────────────────────────────────
-let allStudents = [], todayRecs = [];
-let cameraStream = null, detectLoop = null, demoLoop = null;
-let modelsLoaded = false, demoMode = false;
-let faceMatcher = null;
-let cooldowns = {};
+let allStudents  = [];
+let todayRecs    = [];
+let cameraStream = null, detectLoop = null;
+let modelsLoaded = false;
+let faceMatcher  = null;
+let cooldowns    = {};
 let fpsFrameCount = 0, fpsLastTime = Date.now();
-const COOLDOWN = CONFIG.DUPLICATE_CHECK_MINUTES * 60 * 1000;
+const COOLDOWN   = CONFIG.DUPLICATE_CHECK_MINUTES * 60 * 1000;
 
+// ── Init ──────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   renderSidebar('attendance');
   renderTopbar('เช็คชื่อด้วยใบหน้า', 'Face Recognition Attendance');
 
-  // sync GAS token ก่อน (Google login ต้องการ)
-  if (typeof API !== 'undefined' && API.syncGASToken) {
-    await API.syncGASToken();
-  }
-
-  // โหลดนักเรียนจาก GAS (พร้อม fallback localStorage)
   try {
-    if (typeof API !== 'undefined') {
-      allStudents = await API.getStudents();
-    } else {
-      allStudents = getStudents();
-    }
-  } catch(_) {
-    allStudents = getStudents();
+    await API.syncGASToken();
+    allStudents = await API.getStudents();
+    allStudents = allStudents.map(s => ({
+      ...s,
+      id:        String(s.studentId || s.id || '').trim(),
+      studentId: String(s.studentId || s.id || '').trim(),
+      classLevel: s.classLevel || '',
+      class:      s.classLevel || '',
+    }));
+    console.log('[Attendance] โหลดนักเรียน:', allStudents.length, 'คน');
+    updateInfoBar();
+  } catch(err) {
+    showToast('โหลดนักเรียนล้มเหลว', err.message, 'error');
   }
 
-  // normalize id field ให้แน่ใจก่อนสร้าง FaceMatcher
-  allStudents = allStudents.map(s => ({
-    ...s,
-    id:        String(s.id || s.studentId || '').trim(),
-    studentId: String(s.studentId || s.id || '').trim(),
-  }));
-
-  console.log('[Attendance] โหลดนักเรียน:', allStudents.length, 'คน');
-
-  todayRecs = getTodayAttendance();
-  renderToday();
-  updateInfoBar();
+  // โหลดรายการเช็คชื่อวันนี้
+  await refreshTodayList();
 });
 
 // ── Mode ──────────────────────────────────
@@ -255,7 +246,7 @@ function switchMode(m) {
   if (m === 'manual' && cameraStream) closeCamera();
 }
 
-// ── Camera ────────────────────────────────
+// ── Camera & Face Detection ───────────────
 async function openCamera() {
   document.getElementById('btnOpen').disabled = true;
   document.getElementById('camPlaceholder').style.display = 'none';
@@ -265,10 +256,12 @@ async function openCamera() {
     try {
       await loadFaceModels();
       modelsLoaded = true;
-    } catch (e) {
-      demoMode = true;
-      document.getElementById('infoMode').textContent = '• 🎭 Demo Mode';
-      showToast('ใช้ Demo Mode', 'face-api.js ไม่พร้อม — จำลองการทำงาน', 'warning');
+    } catch(e) {
+      showToast('โหลด AI Model ไม่สำเร็จ', e.message, 'error');
+      document.getElementById('camPlaceholder').style.display = 'flex';
+      document.getElementById('btnOpen').disabled = false;
+      document.getElementById('modelOverlay').classList.add('hidden');
+      return;
     }
     document.getElementById('modelOverlay').classList.add('hidden');
   }
@@ -276,29 +269,22 @@ async function openCamera() {
   try {
     const video = document.getElementById('videoEl');
     cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { width:{ ideal:640 }, height:{ ideal:480 }, facingMode:'user' },
-      audio: false
+      video: { width:{ideal:640}, height:{ideal:480}, facingMode:'user' },
+      audio: false,
     });
     video.srcObject = cameraStream;
     await video.play();
-
     setLiveStatus(true);
 
-    if (!demoMode) {
-      try {
-        buildFaceMatcher();
-      } catch(matcherErr) {
-        // matcher error ไม่ควรปิดกล้อง — log แล้วเดินต่อ
-        console.error('[FaceMatcher] สร้างไม่ได้:', matcherErr.message);
-        showToast('Face Matcher Error', matcherErr.message, 'error', 6000);
-        faceMatcher = null;
-      }
-      startDetect();
-    } else {
-      startDemo();
+    // สร้าง FaceMatcher
+    try { buildFaceMatcher(); } catch(e) {
+      console.error('[FaceMatcher]', e.message);
+      showToast('FaceMatcher Error', e.message, 'warning');
+      faceMatcher = null;
     }
+    startDetect();
     showToast('เปิดกล้องสำเร็จ', 'ระบบพร้อมเช็คชื่อ', 'success');
-  } catch (e) {
+  } catch(e) {
     document.getElementById('camPlaceholder').style.display = 'flex';
     document.getElementById('btnOpen').disabled = false;
     showToast('เปิดกล้องไม่ได้', e.name === 'NotAllowedError' ? 'กรุณาอนุญาตกล้อง' : e.message, 'error');
@@ -324,37 +310,22 @@ async function loadFaceModels() {
 function buildFaceMatcher() {
   const labeled = allStudents
     .filter(s => {
-      // ตรวจ label ก่อน — ต้องเป็น string ไม่ว่างเปล่า
       const label = String(s.id || s.studentId || '').trim();
-      if (!label) {
-        console.warn('[FaceMatcher] ข้ามนักเรียนที่ไม่มี id:', s);
-        return false;
-      }
-      // ตรวจ descriptor
+      if (!label) return false;
       if (!Array.isArray(s.faceDescriptor) || s.faceDescriptor.length !== 128) return false;
-      // ตรวจว่า descriptor เป็นตัวเลขจริง
-      const valid = s.faceDescriptor.every(v => typeof v === 'number' && isFinite(v));
-      if (!valid) {
-        console.warn('[FaceMatcher] faceDescriptor มีค่าไม่ถูกต้อง:', label);
-        return false;
-      }
-      return true;
+      return s.faceDescriptor.every(v => typeof v === 'number' && isFinite(v));
     })
-    .map(s => {
-      const label = String(s.id || s.studentId).trim();   // ← String() ป้องกัน crash
-      return new faceapi.LabeledFaceDescriptors(label, [new Float32Array(s.faceDescriptor)]);
-    });
+    .map(s => new faceapi.LabeledFaceDescriptors(
+      String(s.id || s.studentId).trim(),
+      [new Float32Array(s.faceDescriptor)]
+    ));
 
   faceMatcher = labeled.length
     ? new faceapi.FaceMatcher(labeled, CONFIG.FACE_MATCH_THRESHOLD || 0.5)
     : null;
 
   document.getElementById('infoDescriptors').textContent = `• ${labeled.length} ใบหน้า`;
-  console.log(`[FaceMatcher] สร้างเสร็จ: ${labeled.length}/${allStudents.length} คน`);
-
-  if (!labeled.length) {
-    showToast('ไม่มีข้อมูลใบหน้า', 'กรุณาถ่ายรูปนักเรียนในหน้า "จัดการนักเรียน" ก่อน', 'warning', 5000);
-  }
+  if (!labeled.length) showToast('ไม่มีข้อมูลใบหน้า', 'กรุณาถ่ายรูปนักเรียนในหน้า "จัดการนักเรียน" ก่อน', 'warning', 6000);
 }
 
 function startDetect() {
@@ -364,15 +335,13 @@ function startDetect() {
     if (!cameraStream || !video.videoWidth) return;
     try {
       const dets = await faceapi
-        .detectAllFaces(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+        .detectAllFaces(video, new faceapi.SsdMobilenetv1Options({ minConfidence:0.5 }))
         .withFaceLandmarks().withFaceDescriptors();
       document.getElementById('infoDetect').textContent = `• ${dets.length} detected`;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       dets.forEach(det => {
-        const box = det.detection.box;
         let matched = null;
         if (faceMatcher) {
           const m = faceMatcher.findBestMatch(det.descriptor);
@@ -381,24 +350,11 @@ function startDetect() {
             processCheckIn(matched.id, matched.conf, 'face');
           }
         }
-        drawBox(ctx, box, matched);
+        drawBox(ctx, det.detection.box, matched);
       });
       countFPS();
-    } catch (e) { if (CONFIG.DEBUG) console.warn('detect error', e); }
-  }, 600);
-}
-
-function startDemo() {
-  let i = 0;
-  const pool = allStudents.slice(0, 6);
-  demoLoop = setInterval(() => {
-    if (Math.random() < 0.3 && pool.length) {
-      const s = pool[i++ % pool.length];
-      const sid = String(s.id || s.studentId || '').trim();
-      if (sid) processCheckIn(sid, 78 + Math.random() * 18, 'face');
-    }
-  }, 2800);
-  document.getElementById('overlayMsg').textContent = '🎭 Demo Mode — จำลองการตรวจจับ';
+    } catch(e) { if (CONFIG.DEBUG) console.warn('detect error', e); }
+  }, 700);
 }
 
 function drawBox(ctx, box, match) {
@@ -406,51 +362,34 @@ function drawBox(ctx, box, match) {
   ctx.strokeStyle = color; ctx.lineWidth = 2;
   ctx.shadowColor = color; ctx.shadowBlur = 6;
   const c = Math.min(box.width, box.height) * 0.18;
-  const pts = [[box.x,box.y],[box.x+box.width,box.y],[box.x,box.y+box.height],[box.x+box.width,box.y+box.height]];
-  const dirs = [[c,0,0,c],[- c,0,0,c],[c,0,0,-c],[-c,0,0,-c]];
-  pts.forEach(([px,py],[dx1,dy1,dx2,dy2]) => {
-    if (!dirs[pts.indexOf([px,py])]) return;
-    const [d1x,d1y,d2x,d2y] = dirs[pts.indexOf([px,py])];
-    ctx.beginPath(); ctx.moveTo(px+d1x, py+d1y); ctx.lineTo(px,py); ctx.lineTo(px+d2x, py+d2y); ctx.stroke();
+  [[box.x,box.y,c,0,0,c],[box.x+box.width,box.y,-c,0,0,c],
+   [box.x,box.y+box.height,c,0,0,-c],[box.x+box.width,box.y+box.height,-c,0,0,-c]]
+  .forEach(([px,py,dx1,dy1,dx2,dy2]) => {
+    ctx.beginPath(); ctx.moveTo(px+dx1,py+dy1); ctx.lineTo(px,py); ctx.lineTo(px+dx2,py+dy2); ctx.stroke();
   });
   if (match) {
     ctx.shadowBlur = 0; ctx.fillStyle = color; ctx.globalAlpha = 0.85;
     const label = `${match.conf.toFixed(0)}%`;
     ctx.font = 'bold 12px sans-serif';
     const w = ctx.measureText(label).width + 12;
-    ctx.fillRect(box.x, box.y - 20, w, 18);
+    ctx.fillRect(box.x, box.y-20, w, 18);
     ctx.fillStyle = '#fff'; ctx.globalAlpha = 1;
-    ctx.fillText(label, box.x + 6, box.y - 5);
+    ctx.fillText(label, box.x+6, box.y-5);
   }
 }
 
 function closeCamera() {
   if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
-  clearInterval(detectLoop); clearInterval(demoLoop);
-  detectLoop = null; demoLoop = null;
-  const canvas = document.getElementById('faceCanvas');
-  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  clearInterval(detectLoop); detectLoop = null;
+  document.getElementById('faceCanvas').getContext('2d').clearRect(0,0,9999,9999);
   setLiveStatus(false);
   document.getElementById('camPlaceholder').style.display = 'flex';
   document.getElementById('infoDetect').textContent = '• 0 detected';
   document.getElementById('fpsInfo').textContent = '';
-  showToast('ปิดกล้องแล้ว', '', 'info');
 }
 
-function flipCam() {
-  // Re-open with environment camera
-  closeCamera();
-  setTimeout(() => openCamera(), 300);
-}
-
-function takeSnap() {
-  const video = document.getElementById('videoEl');
-  if (!video.videoWidth) return;
-  const c = document.createElement('canvas');
-  c.width = video.videoWidth; c.height = video.videoHeight;
-  c.getContext('2d').drawImage(video, 0, 0);
-  showToast('Snapshot บันทึกแล้ว', 'Unknown face logged', 'info');
-}
+function flipCam() { closeCamera(); setTimeout(() => openCamera(), 300); }
+function takeSnap() { showToast('Snapshot', 'บันทึกแล้ว', 'info'); }
 
 function setLiveStatus(on) {
   document.getElementById('liveDot').classList.toggle('on', on);
@@ -467,157 +406,114 @@ function countFPS() {
   fpsFrameCount++;
   const now = Date.now();
   if (now - fpsLastTime >= 2000) {
-    const fps = Math.round(fpsFrameCount * 1000 / (now - fpsLastTime));
+    document.getElementById('fpsInfo').textContent = Math.round(fpsFrameCount * 1000 / (now - fpsLastTime)) + ' fps';
     fpsFrameCount = 0; fpsLastTime = now;
-    document.getElementById('fpsInfo').textContent = `${fps} fps`;
   }
 }
 
-// ── Check-in Logic ────────────────────────────
-function processCheckIn(studentId, confidence, method) {
+function updateInfoBar() {
+  const withFace = allStudents.filter(s => Array.isArray(s.faceDescriptor) && s.faceDescriptor.length).length;
+  document.getElementById('infoDescriptors').textContent = `• ${withFace} ใบหน้า`;
+  document.getElementById('infoThresh').textContent = `• Threshold: ${CONFIG.FACE_MATCH_THRESHOLD}`;
+}
+
+// ════════════════════════════════════════════
+// Check-in → Google Sheet 100%
+// ════════════════════════════════════════════
+
+async function processCheckIn(studentId, confidence, method) {
   const now = Date.now();
   if (cooldowns[studentId] && now - cooldowns[studentId] < COOLDOWN) {
-    const s = allStudents.find(st => (st.id === studentId || st.studentId === studentId));
+    const s = allStudents.find(st => st.id === studentId || st.studentId === studentId);
     if (s) showDuplicateCard(s);
     return;
   }
   cooldowns[studentId] = now;
 
-  const student = allStudents.find(s => (s.id === studentId || s.studentId === studentId));
+  const student = allStudents.find(s => s.id === studentId || s.studentId === studentId);
   if (!student) return;
 
-  const nowDate = new Date();
-  const timeStr = nowDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-  const dateStr = nowDate.toISOString().split('T')[0];
+  // แสดง UI ทันที
+  const timeStr = new Date().toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit' });
   const [lh, lm] = CONFIG.LATE_TIME.split(':').map(Number);
   const [ch, cm] = timeStr.split(':').map(Number);
-  const status = (ch > lh || (ch === lh && cm > lm)) ? 'late' : 'present';
-
-  const record = {
-    id: `A${Date.now()}`,
-    date: dateStr, time: timeStr,
-    studentId,
-    studentName: `${student.prefix}${student.firstName} ${student.lastName}`,
-    classLevel: student.classLevel || student.class || '', class: student.classLevel || student.class || '', room: student.room,
-    status, method, deviceId: 'DEVICE-01', note: ''
-  };
-
-  // 1) บันทึก localStorage ทันที
-  const all = getAttendance();
-  all.push(record);
-  saveAttendance(all);
-  todayRecs.push(record);
-
+  const status   = (ch > lh || (ch === lh && cm > lm)) ? 'late' : 'present';
   showCheckInCard(student, status, confidence, timeStr);
-  renderToday();
   speakName(student, status);
-  showToast(
-    `${student.prefix}${student.firstName} ${student.lastName}`,
-    `${STATUS_LABELS[status].label} · ${timeStr}`,
-    status === 'present' ? 'face' : 'warning'
-  );
 
-  // 2) ส่งไป Google Sheet (async — ไม่ block UI)
-  syncCheckInToGAS(studentId, method);
+  // บันทึกลง Google Sheet
+  try {
+    const result = await API.checkAttendance(studentId, method, 'WEB-DEVICE');
+    if (result.duplicate) {
+      showDuplicateCard(student);
+      cooldowns[studentId] = now - (COOLDOWN - 5000); // reset cooldown เร็วขึ้น
+      return;
+    }
+    // เพิ่มใน todayRecs สำหรับแสดง
+    todayRecs.unshift({
+      studentId, studentName: `${student.prefix||''}${student.firstName||''} ${student.lastName||''}`,
+      classLevel: student.classLevel||'', room: student.room||'',
+      date: result.date || new Date().toISOString().split('T')[0],
+      time: result.time || timeStr,
+      status: result.status || status, method,
+    });
+    renderToday();
+    showToast(`${student.prefix||''}${student.firstName||''} ${student.lastName||''}`,
+      `${STATUS_LABELS[result.status||status].label} · ${result.time||timeStr} ✅ บันทึกลง Sheet`,
+      result.status === 'present' ? 'face' : 'warning');
+  } catch(err) {
+    console.error('[CheckIn]', err.message);
+    showToast('บันทึกล้มเหลว', err.message, 'error');
+  }
 }
 
-async function syncCheckInToGAS(studentId, method) {
-  if (!CONFIG._hasRealAPI) return;
-
+// รีเฟรชรายการเช็คชื่อวันนี้จาก Sheet
+async function refreshTodayList() {
   try {
-    const user  = JSON.parse(sessionStorage.getItem('user') || '{}');
-    const token = user.gasToken || user.token || '';
-    if (!token) {
-      // ยังไม่มี token → ขอใหม่แล้วลองอีกครั้ง
-      if (typeof API !== 'undefined' && API.syncGASToken) {
-        await API.syncGASToken();
-        const u2 = JSON.parse(sessionStorage.getItem('user') || '{}');
-        if (!u2.gasToken && !u2.token) {
-          console.warn('[Attendance] ไม่มี GAS token — บันทึกเฉพาะ local');
-          return;
-        }
-      }
-    }
-
-    const freshToken = (JSON.parse(sessionStorage.getItem('user') || '{}').gasToken ||
-                        JSON.parse(sessionStorage.getItem('user') || '{}').token || '');
-
-    const res = await fetch(CONFIG.API_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body:    JSON.stringify({
-        action:    'checkAttendance',
-        token:     freshToken,
-        studentId,
-        method,
-        deviceId:  'WEB-DEVICE',
-      }),
-      mode: 'cors',
-    });
-
-    const data = await res.json();
-    if (data.success) {
-      console.log('[Attendance] ✅ บันทึกลง Google Sheet:', data.data?.attendanceId);
-      showToast('✅ บันทึกลง Google Sheet', '', 'success', 2000);
-    } else {
-      console.error('[Attendance] GAS error:', data.error);
-      // ถ้า Unauthorized → ลอง sync token แล้ว retry
-      if (data.error && data.error.includes('Unauthorized')) {
-        if (typeof API !== 'undefined' && API.syncGASToken) {
-          await API.syncGASToken();
-          await syncCheckInToGAS(studentId, method);  // retry ครั้งเดียว
-        }
-      }
-    }
-  } catch (err) {
-    console.error('[Attendance] fetch error:', err.message);
-    // เก็บไว้ retry ทีหลังผ่าน offline queue
-    if (typeof API !== 'undefined' && API.flushQueue) {
-      const q = JSON.parse(localStorage.getItem('fa_sync_queue') || '[]');
-      q.push({ action: 'checkAttendance', params: { studentId, method, deviceId: 'WEB-DEVICE' }, ts: Date.now() });
-      localStorage.setItem('fa_sync_queue', JSON.stringify(q));
-      console.log('[Attendance] queued for retry');
-    }
+    const today = new Date().toISOString().split('T')[0];
+    todayRecs = await API.getAttendance({ date: today });
+    renderToday();
+  } catch(err) {
+    console.warn('[Today]', err.message);
   }
 }
 
 function showCheckInCard(student, status, conf, time) {
-  const card = document.getElementById('resultCard');
-  const s = STATUS_LABELS[status];
-  const initials = `${student.firstName[0]}${student.lastName[0]}`;
-  const grad = {present:'linear-gradient(135deg,#10b981,#059669)',late:'linear-gradient(135deg,#f59e0b,#d97706)',absent:'linear-gradient(135deg,#ef4444,#dc2626)',leave:'linear-gradient(135deg,#3b82f6,#2563eb)'};
-  const cls = {present:'rc-success',late:'rc-late',absent:'',leave:'rc-success'};
-  card.className = `result-card ${cls[status]||''}`;
-  card.innerHTML = `
+  const s    = STATUS_LABELS[status];
+  const fn   = student.firstName||'?';
+  const ln   = student.lastName||'?';
+  const init = (fn[0]||'') + (ln[0]||'');
+  const grad = {present:'linear-gradient(135deg,#10b981,#059669)',late:'linear-gradient(135deg,#f59e0b,#d97706)'};
+  const rcCls= {present:'rc-success',late:'rc-late'};
+  document.getElementById('resultCard').className = `result-card ${rcCls[status]||''}`;
+  document.getElementById('resultCard').innerHTML = `
     <div style="display:flex;align-items:center;gap:12px">
-      <div class="r-avatar" style="background:${grad[status]}">${initials}</div>
+      <div class="r-avatar" style="background:${grad[status]||grad.present}">${init}</div>
       <div style="flex:1;min-width:0">
-        <div class="r-name">${student.prefix}${student.firstName} ${student.lastName}</div>
-        <div class="r-meta">ชั้น ${student.classLevel||student.class||''}/${student.room} · เลขที่ ${student.no||student.number||''}</div>
+        <div class="r-name">${student.prefix||''}${fn} ${ln}</div>
+        <div class="r-meta">ชั้น ${student.classLevel||student.class||''}/${student.room||''} · เลขที่ ${student.number||student.no||''}</div>
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
       <span class="badge ${s.badge}">${s.icon} ${s.label}</span>
       <span class="badge badge-gray">⏰ ${time}</span>
-      <span class="badge badge-purple">📷 Face</span>
+      <span class="badge badge-purple">📷 Face ${conf.toFixed(0)}%</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
       <span style="font-size:12px;color:var(--text-muted);min-width:70px">ความแม่นยำ</span>
       <div style="flex:1"><div class="progress-bar"><div class="progress-fill" style="width:${conf}%;background:${conf>80?'var(--accent)':conf>60?'var(--warning)':'var(--danger)'}"></div></div></div>
-      <span style="font-size:13px;font-weight:700;min-width:38px;text-align:right;color:${conf>80?'var(--accent)':conf>60?'var(--warning)':'var(--danger)'}">${conf.toFixed(0)}%</span>
-    </div>
-  `;
+      <span style="font-size:13px;font-weight:700;min-width:38px;text-align:right">${conf.toFixed(0)}%</span>
+    </div>`;
 }
 
 function showDuplicateCard(student) {
-  const card = document.getElementById('resultCard');
-  const last = todayRecs.filter(r => r.studentId === (student.id||student.studentId)).slice(-1)[0];
-  card.className = 'result-card rc-dup';
-  card.innerHTML = `
+  const last = todayRecs.find(r => r.studentId === (student.id||student.studentId));
+  document.getElementById('resultCard').className = 'result-card rc-dup';
+  document.getElementById('resultCard').innerHTML = `
     <div style="display:flex;align-items:center;gap:12px">
       <div class="r-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706)">⏰</div>
       <div>
-        <div class="r-name" style="font-size:15px">${student.prefix}${student.firstName} ${student.lastName}</div>
+        <div class="r-name" style="font-size:15px">${student.prefix||''}${student.firstName||''} ${student.lastName||''}</div>
         <div class="r-meta">เช็คชื่อแล้วเมื่อ ${last?.time || '—'}</div>
       </div>
     </div>
@@ -627,83 +523,100 @@ function showDuplicateCard(student) {
 }
 
 function renderToday() {
-  const sorted = [...todayRecs].sort((a, b) => b.time.localeCompare(a.time));
+  const sorted = [...todayRecs].sort((a,b) => (b.time||'').localeCompare(a.time||''));
   document.getElementById('todayBadge').textContent = `${sorted.length} คน`;
   const list = document.getElementById('todayList');
-  if (!sorted.length) { list.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">ยังไม่มีการเช็คชื่อ</div>'; return; }
-  list.innerHTML = sorted.slice(0, 30).map(r => {
-    const s = STATUS_LABELS[r.status];
+  if (!sorted.length) {
+    list.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">ยังไม่มีการเช็คชื่อ</div>';
+    return;
+  }
+  list.innerHTML = sorted.slice(0,30).map(r => {
+    const s = STATUS_LABELS[r.status] || STATUS_LABELS['present'];
     return `<div class="t-row">
       <span class="badge ${s.badge}" style="min-width:46px;justify-content:center;font-size:11px">${s.icon}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.studentName}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${r.classLevel||r.class||''}/${r.room}</div>
+        <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.studentName||r.studentId}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${r.classLevel||r.class||''}/${r.room||''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
-        <div style="font-size:12px;font-weight:600">${r.time}</div>
+        <div style="font-size:12px;font-weight:600">${r.time||'—'}</div>
         <div style="font-size:10px;color:var(--text-muted)">${r.method==='face'?'📷':'✍️'}</div>
       </div>
     </div>`;
   }).join('');
 }
 
-function clearDisplay() {
-  document.getElementById('todayList').innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">ล้างการแสดงผล (ข้อมูลยังอยู่)</div>';
-  document.getElementById('todayBadge').textContent = '0 คน';
-}
-
 function speakName(student, status) {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const msg = status === 'present'
-    ? `ยินดีต้อนรับ ${student.prefix}${student.firstName} ชั้น ${student.classLevel||student.class||''} ห้อง ${student.room}`
-    : `${student.prefix}${student.firstName} มาสาย`;
+    ? `ยินดีต้อนรับ ${student.prefix||''}${student.firstName||''} ชั้น ${student.classLevel||student.class||''} ห้อง ${student.room||''}`
+    : `${student.prefix||''}${student.firstName||''} มาสาย`;
   const u = new SpeechSynthesisUtterance(msg);
   u.lang = 'th-TH'; u.rate = 0.95;
   window.speechSynthesis.speak(u);
 }
 
-function updateInfoBar() {
-  const withFace = allStudents.filter(s => Array.isArray(s.faceDescriptor)).length;
-  document.getElementById('infoDescriptors').textContent = `• ${withFace} ใบหน้า`;
-  document.getElementById('infoThresh').textContent = `• Threshold: ${CONFIG.FACE_MATCH_THRESHOLD}`;
-}
-
-// ── Manual Mode ───────────────────────────────
+// ════════════════════════════════════════════
+// Manual Mode — บันทึกลง Google Sheet
+// ════════════════════════════════════════════
 let mStatusMap = {};
 
-function loadManual() {
-  const cls = document.getElementById('mClass').value;
+async function loadManual() {
+  const cls  = document.getElementById('mClass').value;
   const room = document.getElementById('mRoom').value;
   if (!cls || !room) return;
-  const list = allStudents.filter(s => (s.classLevel||s.class||'') === cls && s.room === room).sort((a,b) => (a.no||a.number||0)-(b.no||b.number||0));
-  mStatusMap = {};
-  list.forEach(s => mStatusMap[s.id] = 'present');
-  renderManualList(list);
+
+  document.getElementById('manualList').innerHTML =
+    '<div style="text-align:center;padding:30px;color:var(--text-muted)">กำลังโหลด...</div>';
+
+  try {
+    // ดึงจาก allStudents ที่โหลดแล้ว หรือดึงใหม่ถ้าว่าง
+    let list = allStudents.filter(s =>
+      (s.classLevel||s.class||'') === cls && String(s.room||'') === String(room)
+    ).sort((a,b) => ((a.number||a.no||0) - (b.number||b.no||0)));
+
+    if (!list.length) {
+      list = (await API.getStudents({ classLevel:cls, room }))
+        .sort((a,b) => ((a.number||a.no||0) - (b.number||b.no||0)));
+    }
+
+    mStatusMap = {};
+    list.forEach(s => mStatusMap[s.studentId||s.id] = 'present');
+    renderManualList(list);
+  } catch(err) {
+    document.getElementById('manualList').innerHTML =
+      `<div style="text-align:center;padding:30px;color:var(--danger)">❌ ${err.message}</div>`;
+  }
 }
 
 function renderManualList(list) {
   const wrap = document.getElementById('manualList');
   if (!list.length) { wrap.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">ไม่พบนักเรียน</div>'; return; }
-  wrap.innerHTML = list.map(s => `
-    <div class="s-row mp" id="sr-${s.id}">
-      <span style="font-size:12px;font-weight:700;color:var(--text-muted);min-width:24px;text-align:center">${s.no}</span>
-      <div style="flex:1;font-weight:600;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.prefix}${s.firstName} ${s.lastName}</div>
-      <div class="s-btns">
-        ${[['present','✅','มา','sp'],['late','⏰','สาย','sl'],['absent','❌','ขาด','sa'],['leave','📝','ลา','slv']].map(([st,ic,lb,cls]) =>
-          `<button class="s-mb ${st==='present'?cls:''}" id="sb-${s.id}-${st}" onclick="setMStatus('${s.id}','${st}')">${ic} ${lb}</button>`
-        ).join('')}
-      </div>
-    </div>`).join('');
+  wrap.innerHTML = list.map(s => {
+    const sid = s.studentId||s.id;
+    return `
+      <div class="s-row mp" id="sr-${sid}">
+        <span style="font-size:12px;font-weight:700;color:var(--text-muted);min-width:24px;text-align:center">${s.number||s.no||''}</span>
+        <div style="flex:1;font-weight:600;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${s.prefix||''}${s.firstName||''} ${s.lastName||''}
+        </div>
+        <div class="s-btns">
+          ${[['present','✅','มา','sp'],['late','⏰','สาย','sl'],['absent','❌','ขาด','sa'],['leave','📝','ลา','slv']].map(([st,ic,lb,cls]) =>
+            `<button class="s-mb ${st==='present'?cls:''}" id="sb-${sid}-${st}" onclick="setMStatus('${sid}','${st}')">${ic} ${lb}</button>`
+          ).join('')}
+        </div>
+      </div>`;
+  }).join('');
   updateSum();
 }
 
 function setMStatus(id, status) {
   mStatusMap[id] = status;
   const clsMap = {present:'mp',late:'ml',absent:'ma',leave:'mlv'};
+  const bCls   = {present:'sp',late:'sl',absent:'sa',leave:'slv'};
   const row = document.getElementById(`sr-${id}`);
-  row.className = `s-row ${clsMap[status]}`;
-  const bCls = {present:'sp',late:'sl',absent:'sa',leave:'slv'};
+  if (row) row.className = `s-row ${clsMap[status]}`;
   ['present','late','absent','leave'].forEach(st => {
     const b = document.getElementById(`sb-${id}-${st}`);
     if (b) b.className = `s-mb ${st===status?bCls[st]:''}`;
@@ -721,77 +634,51 @@ function updateSum() {
     ? `รวม ${total} คน | ✅${c.present} ⏰${c.late} ❌${c.absent} 📝${c.leave}` : '';
 }
 
-function saveManual() {
-  const cls = document.getElementById('mClass').value;
+async function saveManual() {
+  const cls  = document.getElementById('mClass').value;
   const room = document.getElementById('mRoom').value;
   if (!cls || !room) { showToast('เลือกห้องเรียนก่อน','','warning'); return; }
-  const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
-  const timeStr = now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
-  const all = getAttendance();
-  let count = 0;
-  Object.entries(mStatusMap).forEach(([id, status]) => {
-    const s = allStudents.find(st => st.id === id);
-    if (!s) return;
-    const i = all.findIndex(r => r.studentId===id && r.date===dateStr);
-    if (i>=0) all.splice(i,1);
-    all.push({ id:`M${Date.now()}${id}`, date:dateStr, time:timeStr, studentId:id,
-      studentName:`${s.prefix}${s.firstName} ${s.lastName}`, classLevel:cls, class:cls, room,
-      status, method:'manual', deviceId:'MANUAL', note:'' });
-    count++;
-  });
-  saveAttendance(all);
-  todayRecs = getTodayAttendance();
-  renderToday();
-  showToast('บันทึกสำเร็จ', `เช็คชื่อ ${count} คน · ชั้น ${cls}/${room}`, 'success');
-  if (window.speechSynthesis) {
-    const u = new SpeechSynthesisUtterance(`บันทึกการเช็คชื่อชั้น ${cls} ห้อง ${room} เรียบร้อยแล้ว`);
-    u.lang = 'th-TH'; window.speechSynthesis.speak(u);
-  }
+  if (!Object.keys(mStatusMap).length) { showToast('ไม่มีนักเรียน','','warning'); return; }
 
-  // ส่งทุก record ไป GAS (async)
-  if (CONFIG._hasRealAPI) {
-    syncManualToGAS(Object.entries(mStatusMap), cls, room);
-  }
-}
+  const btn = document.getElementById('btnSaveManual');
+  btn.disabled = true;
+  btn.textContent = '⏳ กำลังบันทึก...';
 
-async function syncManualToGAS(entries, cls, room) {
-  try {
-    const user  = JSON.parse(sessionStorage.getItem('user') || '{}');
-    let token   = user.gasToken || user.token || '';
-
-    // ถ้าไม่มี token → ขอใหม่
-    if (!token && typeof API !== 'undefined' && API.syncGASToken) {
-      await API.syncGASToken();
-      token = (JSON.parse(sessionStorage.getItem('user') || '{}').gasToken ||
-               JSON.parse(sessionStorage.getItem('user') || '{}').token || '');
-    }
-    if (!token) { console.warn('[Manual] ไม่มี token'); return; }
-
-    let ok = 0, fail = 0;
-    for (const [studentId, status] of entries) {
-      try {
-        const res  = await fetch(CONFIG.API_URL, {
-          method:  'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body:    JSON.stringify({ action:'checkAttendance', token, studentId, method:'manual', deviceId:'MANUAL-WEB', note: status === 'absent' ? 'ขาดเรียน' : status === 'leave' ? 'ลา' : '' }),
-          mode:    'cors',
+  let ok = 0, fail = 0;
+  for (const [studentId, status] of Object.entries(mStatusMap)) {
+    try {
+      // ใช้ updateAttendanceStatus หรือ checkAttendance ขึ้นกับ status
+      if (status === 'present' || status === 'late') {
+        await API.checkAttendance(studentId, 'manual', 'MANUAL-WEB');
+        ok++;
+      } else {
+        // absent / leave → สร้าง record ด้วย overrideStatus
+        await API.callGAS('checkAttendance', {
+          studentId, method:'manual', deviceId:'MANUAL-WEB',
+          overrideStatus: status,
+          note: status==='absent'?'ขาดเรียน':status==='leave'?'ลา':'',
         });
-        const data = await res.json();
-        if (data.success) ok++;
-        else { fail++; console.warn('[Manual] GAS:', data.error, 'studentId:', studentId); }
-      } catch(e) {
-        fail++;
-        // เก็บ queue
-        const q = JSON.parse(localStorage.getItem('fa_sync_queue') || '[]');
-        q.push({ action:'checkAttendance', params:{ studentId, method:'manual', deviceId:'MANUAL-WEB' }, ts:Date.now() });
-        localStorage.setItem('fa_sync_queue', JSON.stringify(q));
+        ok++;
       }
+    } catch(err) {
+      fail++;
+      console.warn('[Manual]', studentId, err.message);
     }
-    if (ok > 0) showToast(`✅ บันทึก Sheet ${ok} คน`, fail > 0 ? `(${fail} คนล้มเหลว)` : '', 'success', 3000);
-    else if (fail > 0) showToast('⚠️ บันทึก Sheet ไม่สำเร็จ', 'ดูรายละเอียดใน Console', 'warning');
-  } catch(err) {
-    console.error('[Manual] syncManualToGAS error:', err.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '💾 บันทึกลง Google Sheet';
+
+  if (ok > 0) {
+    showToast('บันทึกสำเร็จ ✅',
+      `เช็คชื่อ ${ok} คน · ชั้น ${cls}/${room}${fail?' (ล้มเหลว '+fail+' คน)':''}`, 'success');
+    await refreshTodayList();
+    if (window.speechSynthesis) {
+      const u = new SpeechSynthesisUtterance(`บันทึกการเช็คชื่อชั้น ${cls} ห้อง ${room} เรียบร้อยแล้ว`);
+      u.lang = 'th-TH'; window.speechSynthesis.speak(u);
+    }
+  } else {
+    showToast('บันทึกไม่สำเร็จ', 'กรุณาตรวจสอบการเชื่อมต่อ', 'error');
   }
 }
 </script>
