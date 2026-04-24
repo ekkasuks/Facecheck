@@ -1,9 +1,11 @@
 // ============================================
 // auth.js — Auth + Shared UI Utilities
+// ★ ไม่มี localStorage helpers ของข้อมูล
+//   (เหลือแค่ theme/session ซึ่งจำเป็น)
 // ============================================
 
 // ════════════════════════════════════════════
-// Session Management
+// Session Management (sessionStorage เท่านั้น)
 // ════════════════════════════════════════════
 
 function getCurrentUser() {
@@ -22,35 +24,35 @@ function requireAuth() {
 }
 
 function doLogout() {
-  // ถ้า login ด้วย Google → revoke token ด้วย
   const user = getCurrentUser();
-  if (user && user.loginMethod === 'google' && user.googleToken) {
+  if (user && user.loginMethod === 'google') {
     try {
       if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
         google.accounts.id.disableAutoSelect();
-        google.accounts.id.revoke(user.email, () => {
-          console.log('[Auth] Google token revoked');
-        });
+        google.accounts.id.revoke(user.email, () => {});
       }
     } catch(_) {}
   }
-  sessionStorage.removeItem('user');
+  sessionStorage.clear();
   window.location.href = 'index.html';
 }
 
 // ════════════════════════════════════════════
-// Theme
+// Theme (localStorage สำหรับ UI preference เท่านั้น)
 // ════════════════════════════════════════════
 
 function initTheme() {
   const saved = localStorage.getItem('theme');
   if (saved === 'light') {
     document.documentElement.setAttribute('data-theme', 'light');
-    _updateThemeBtn('light');
   } else {
     document.documentElement.removeAttribute('data-theme');
-    _updateThemeBtn('dark');
   }
+  _updateThemeBtn(saved || 'dark');
+
+  // primary color preference
+  const color = localStorage.getItem('fa_primaryColor');
+  if (color) document.documentElement.style.setProperty('--primary', color);
 }
 
 function toggleTheme() {
@@ -84,10 +86,10 @@ function showToast(title, message = '', type = 'success', duration = 4000) {
     document.body.appendChild(container);
   }
 
-  const icons   = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️', face:'👤' };
-  const colors  = { success:'#10b981', error:'#ef4444', warning:'#f59e0b', info:'#3b82f6', face:'#4f46e5' };
+  const icons  = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️', face:'👤' };
+  const colors = { success:'#10b981', error:'#ef4444', warning:'#f59e0b', info:'#3b82f6', face:'#4f46e5' };
 
-  const toast   = document.createElement('div');
+  const toast = document.createElement('div');
   toast.className = 'toast';
   toast.style.setProperty('--toast-color', colors[type] || colors.info);
   toast.innerHTML = `
@@ -114,36 +116,37 @@ function showToast(title, message = '', type = 'success', duration = 4000) {
 // ════════════════════════════════════════════
 
 function renderSidebar(activePage) {
-  const user = getCurrentUser();
+  const user    = getCurrentUser();
   if (!user) return;
   const sidebar = document.getElementById('sidebar');
   if (!sidebar) return;
 
   const nav = [
-    { icon:'📊', label:'แดชบอร์ด',    href:'dashboard.html',  page:'dashboard'  },
-    { icon:'📷', label:'เช็คชื่อ',     href:'attendance.html', page:'attendance' },
-    { icon:'👥', label:'นักเรียน',     href:'students.html',   page:'students'   },
-    { icon:'📋', label:'รายงาน',       href:'reports.html',    page:'reports'    },
-    { icon:'⚙️', label:'ตั้งค่า',      href:'settings.html',   page:'settings'   },
+    { icon:'📊', label:'แดชบอร์ด',  href:'dashboard.html',  page:'dashboard'  },
+    { icon:'📷', label:'เช็คชื่อ',   href:'attendance.html', page:'attendance' },
+    { icon:'👥', label:'นักเรียน',   href:'students.html',   page:'students'   },
+    { icon:'📋', label:'รายงาน',     href:'reports.html',    page:'reports'    },
+    { icon:'⚙️', label:'ตั้งค่า',    href:'settings.html',   page:'settings'   },
   ];
 
-  // Avatar: รูปโปรไฟล์จาก Google หรือ initials
   const initials = (user.name || user.email || 'U')
     .split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
   const avatarHtml = user.picture
-    ? `<img src="${user.picture}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--border-strong)" onerror="this.outerHTML='<div class=user-avatar avatar-initials>${initials}</div>'">`
+    ? `<img src="${user.picture}"
+         style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--border-strong)"
+         onerror="this.outerHTML='<div class=\\'user-avatar avatar-initials\\'>${initials}</div>'">`
     : `<div class="user-avatar avatar-initials">${initials}</div>`;
 
   const rl = (typeof ROLE_LABELS !== 'undefined' && ROLE_LABELS && ROLE_LABELS[user.role])
     ? ROLE_LABELS[user.role]
     : { label: user.role || 'ผู้ใช้', icon: '👤' };
-  const roleLabel = rl.label;
+
   const roleColors = { admin:'#10b981', teacher:'#3b82f6', viewer:'#94a3b8' };
   const roleColor  = roleColors[user.role] || '#94a3b8';
 
   const loginBadge = user.loginMethod === 'google'
-    ? '<span style="font-size:9px;background:rgba(66,133,244,.2);color:#60a5fa;padding:1px 5px;border-radius:4px;margin-left:4px">Google</span>'
+    ? `<span style="font-size:9px;background:rgba(66,133,244,.2);color:#60a5fa;padding:1px 5px;border-radius:4px;margin-left:4px">Google</span>`
     : '';
 
   sidebar.innerHTML = `
@@ -151,7 +154,7 @@ function renderSidebar(activePage) {
       <div class="brand-icon">🎓</div>
       <div>
         <div class="brand-name">FaceAttend</div>
-        <div class="brand-tagline">${(CONFIG && CONFIG.SCHOOL_SHORT) || 'ระบบเช็คชื่อ'}</div>
+        <div class="brand-tagline">${(typeof CONFIG !== 'undefined' && CONFIG.SCHOOL_SHORT) || 'ระบบเช็คชื่อ'}</div>
       </div>
     </div>
     <nav class="sidebar-nav">
@@ -160,8 +163,7 @@ function renderSidebar(activePage) {
         <a href="${item.href}" class="nav-item ${activePage === item.page ? 'active' : ''}">
           <span class="nav-icon">${item.icon}</span>
           <span>${item.label}</span>
-        </a>
-      `).join('')}
+        </a>`).join('')}
     </nav>
     <div class="sidebar-footer">
       <div class="user-profile" onclick="doLogout()" title="คลิกเพื่อออกจากระบบ">
@@ -171,7 +173,9 @@ function renderSidebar(activePage) {
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px">${user.name || user.email}</span>
             ${loginBadge}
           </div>
-          <div class="user-role"><span style="color:${roleColor};font-weight:700">${roleLabel}</span> · ออกจากระบบ</div>
+          <div class="user-role">
+            <span style="color:${roleColor};font-weight:700">${rl.label}</span> · ออกจากระบบ
+          </div>
         </div>
       </div>
     </div>
@@ -191,12 +195,20 @@ function renderTopbar(title, subtitle = '') {
   const timeStr = now.toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit' });
 
   const u = getCurrentUser();
-  const roleColors2 = { admin:'#10b981', teacher:'#3b82f6', viewer:'#94a3b8' };
-  const roleIcons2  = { admin:'👑', teacher:'👨‍🏫', viewer:'👁️' };
-  const roleBadge = u ? `<span style="padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${(roleColors2[u.role]||'#94a3b8')}22;color:${roleColors2[u.role]||'#94a3b8'};border:1px solid ${(roleColors2[u.role]||'#94a3b8')}44">${roleIcons2[u.role]||'👤'} ${(typeof ROLE_LABELS!=='undefined'&&ROLE_LABELS[u.role])?ROLE_LABELS[u.role].label:u.role}</span>` : '';
+  const roleColors = { admin:'#10b981', teacher:'#3b82f6', viewer:'#94a3b8' };
+  const roleIcons  = { admin:'👑', teacher:'👨‍🏫', viewer:'👁️' };
+  const rl = (typeof ROLE_LABELS !== 'undefined' && u && ROLE_LABELS[u.role])
+    ? ROLE_LABELS[u.role].label : (u?.role || '');
+  const roleBadge = u
+    ? `<span style="padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;
+        background:${(roleColors[u.role]||'#94a3b8')}22;color:${roleColors[u.role]||'#94a3b8'};
+        border:1px solid ${(roleColors[u.role]||'#94a3b8')}44">
+        ${roleIcons[u.role]||'👤'} ${rl}
+      </span>` : '';
 
   topbar.innerHTML = `
-    <button class="btn-icon" id="menuBtnMobile" onclick="document.getElementById('sidebar').classList.toggle('open')"
+    <button class="btn-icon" id="menuBtnMobile"
+      onclick="document.getElementById('sidebar').classList.toggle('open')"
       style="display:none">☰</button>
     <div>
       <div class="topbar-title">${title}</div>
@@ -208,9 +220,9 @@ function renderTopbar(title, subtitle = '') {
     <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
   `;
 
-  // Live clock
+  // นาฬิกา live
   setInterval(() => {
-    const n = new Date();
+    const n  = new Date();
     const el = document.getElementById('topbarClock');
     if (el) el.textContent =
       n.toLocaleDateString('th-TH', { weekday:'short', month:'long', day:'numeric' }) +
@@ -219,7 +231,6 @@ function renderTopbar(title, subtitle = '') {
 
   _updateThemeBtn(localStorage.getItem('theme') || 'dark');
 
-  // Mobile menu button
   if (window.innerWidth <= 768) {
     const btn = document.getElementById('menuBtnMobile');
     if (btn) btn.style.display = 'flex';
@@ -238,7 +249,7 @@ function confirm(title, message, onConfirm) {
       <div class="modal-header">
         <h2 class="modal-title">⚠️ ${title}</h2>
       </div>
-      <p style="color:var(--text-muted);font-size:14px;line-height:1.6">${message}</p>
+      <p style="color:var(--text-muted);font-size:14px;line-height:1.6;margin-bottom:4px">${message}</p>
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">ยกเลิก</button>
         <button class="btn btn-danger" id="_confirmOkBtn">ยืนยัน</button>
@@ -275,18 +286,11 @@ function getDateRange(type) {
 }
 
 // ════════════════════════════════════════════
-// Role Labels (defined in config.js — skip redeclaration)
-// ════════════════════════════════════════════
-// ROLE_LABELS is already declared in config.js
-
-// ════════════════════════════════════════════
-// Auto-init on page load
+// Auto-init
 // ════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
-
-  // Toast container
   if (!document.getElementById('toast-container')) {
     const tc = document.createElement('div');
     tc.id = 'toast-container';
