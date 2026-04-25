@@ -156,18 +156,41 @@ const API = (() => {
     if (filter.room)       params.room       = filter.room;
     const result = await callGAS('getStudents', params);
     if (!Array.isArray(result)) return [];
-    return result.map(s => ({
-      ...s,
-      id:        s.studentId || s.id || '',
-      studentId: s.studentId || s.id || '',
-      classLevel: s.classLevel || '',
-      class:      s.classLevel || '',
-      no:         s.number || s.no || '',
-      number:     s.number || s.no || '',
-      faceDescriptor: s.faceDescriptorJson
-        ? (() => { try { return JSON.parse(s.faceDescriptorJson); } catch(_) { return null; } })()
-        : (s.faceDescriptor || null),
-    }));
+    return result.map(s => {
+      // ★ parse faceDescriptor ให้ได้ Array[128] เสมอ
+      //   GAS อาจส่งมาเป็น: Array, JSON string, หรือ null
+      let desc = null;
+      if (Array.isArray(s.faceDescriptor) && s.faceDescriptor.length === 128) {
+        desc = s.faceDescriptor;                       // GAS parse ให้แล้ว ✅
+      } else if (s.faceDescriptorJson && typeof s.faceDescriptorJson === 'string') {
+        try {
+          const p = JSON.parse(s.faceDescriptorJson);
+          if (Array.isArray(p) && p.length === 128) desc = p;
+        } catch(_) {}
+      } else if (typeof s.faceDescriptor === 'string' && s.faceDescriptor.startsWith('[')) {
+        try {
+          const p = JSON.parse(s.faceDescriptor);
+          if (Array.isArray(p) && p.length === 128) desc = p;
+        } catch(_) {}
+      }
+
+      if (CONFIG.DEBUG && desc === null && (s.faceDescriptorJson || s.faceDescriptor)) {
+        console.warn('[API] faceDescriptor parse ล้มเหลว สำหรับ', s.studentId,
+          '| type:', typeof s.faceDescriptor,
+          '| jsonType:', typeof s.faceDescriptorJson);
+      }
+
+      return {
+        ...s,
+        id:            s.studentId || s.id || '',
+        studentId:     s.studentId || s.id || '',
+        classLevel:    s.classLevel || '',
+        class:         s.classLevel || '',
+        no:            s.number || s.no || '',
+        number:        s.number || s.no || '',
+        faceDescriptor: desc,
+      };
+    });
   }
 
   async function addStudent(data) {
