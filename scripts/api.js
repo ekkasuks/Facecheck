@@ -1,9 +1,16 @@
 // ============================================
 // api.js — API Client (Google Sheet ONLY)
-// ★ ไม่มี localStorage เลย — ดึงข้อมูลจาก GAS 100%
+// v2.4.2 — แก้ Unauthorized: No token
+//   • syncGASToken() เรียกก่อน callGAS() เสมอ
+//   • ensureToken() รอ token พร้อมก่อน request
 // ============================================
 
 const API = (() => {
+
+  // ── สถานะ token sync ─────────────────────
+  let _tokenSyncing = false;      // กำลัง sync อยู่หรือเปล่า
+  let _tokenReady   = false;      // sync เสร็จแล้วหรือยัง
+  let _syncPromise  = null;       // promise เดิมถ้ากำลัง sync
 
   // ── ดึง token จาก session ────────────────
   function getToken() {
@@ -15,10 +22,74 @@ const API = (() => {
     } catch(_) { return ''; }
   }
 
-  // ── POST ไปยัง Apps Script ───────────────
+  // ── Ensure token พร้อมก่อน request ──────
+  //    ถ้ายังไม่มี gasToken → sync ก่อน (ครั้งเดียว)
+  async function ensureToken() {
+    // ถ้า login ด้วย password → token มีแล้วใน user.token
+    const tok = getToken();
+    if (tok) { _tokenReady = true; return; }
+
+    // ถ้ากำลัง sync อยู่ → รอ promise เดิม
+    if (_syncPromise) { await _syncPromise; return; }
+
+    // เริ่ม sync ครั้งแรก
+    _syncPromise = _doSyncGASToken();
+    await _syncPromise;
+    _syncPromise = null;
+  }
+
+  // ── Internal sync (เรียกครั้งเดียว) ──────
+  async function _doSyncGASToken() {
+    try {
+      const raw = sessionStorage.getItem('user');
+      if (!raw) return;
+      const user = JSON.parse(raw);
+
+      // password login → token อยู่ใน user.token แล้ว ไม่ต้อง sync
+      if (user.loginMethod === 'password' && user.token) {
+        _tokenReady = true;
+        return;
+      }
+
+      // google login → ขอ GAS token ด้วย loginGoogle
+      if (!CONFIG._hasRealAPI) return;
+
+      console.log('[API] ขอ GAS token จาก loginGoogle...');
+      const res = await fetch(CONFIG.API_URL, {
+        method:  'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body:    JSON.stringify({
+          action:      'loginGoogle',
+          email:       user.email,
+          googleToken: user.googleToken || '',
+        }),
+        mode: 'cors',
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+
+      if (data.success && data.data && data.data.token) {
+        user.gasToken = data.data.token;
+        user.role     = data.data.role || user.role;  // อัปเดต role จาก GAS
+        sessionStorage.setItem('user', JSON.stringify(user));
+        console.log('[API] GAS token ✅ role:', user.role);
+        _tokenReady = true;
+      } else {
+        console.warn('[API] loginGoogle ไม่ได้ token:', data.error);
+      }
+    } catch(e) {
+      console.warn('[API] _doSyncGASToken failed:', e.message);
+      // ไม่ throw — ให้ระบบทำงานต่อได้ (GAS จะตอบ Unauthorized)
+    }
+  }
+
+  // ── POST ไปยัง Apps Script (พร้อม auto-sync) ─
   async function callGAS(action, params = {}) {
     const url = CONFIG.API_URL;
     if (!CONFIG._hasRealAPI) throw new Error('ยังไม่ได้ตั้งค่า API_URL ใน config.js');
+
+    // ★ รอให้ token พร้อมก่อนทุก request
+    await ensureToken();
 
     const payload = { action, token: getToken(), ...params };
 
@@ -30,36 +101,31 @@ const API = (() => {
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+
+    // ★ ถ้า GAS ตอบ Unauthorized → ลอง sync token ใหม่ 1 ครั้ง
+    if (!data.success && data.error && data.error.includes('Unauthorized')) {
+      console.warn('[API] Unauthorized — ลอง re-sync token...');
+      _tokenReady = false;
+      await _doSyncGASToken();
+      // ส่งใหม่อีกครั้งด้วย token ใหม่
+      const retry = await fetch(url, {
+        method:  'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body:    JSON.stringify({ action, token: getToken(), ...params }),
+        mode:    'cors',
+      });
+      const retryData = await retry.json();
+      if (!retryData.success) throw new Error(retryData.error || 'GAS error (retry)');
+      if (CONFIG.DEBUG) console.log(`[API] ${action} OK (retry)`, retryData.data);
+      return retryData.data;
+    }
+
     if (!data.success) throw new Error(data.error || 'GAS error');
     if (CONFIG.DEBUG) console.log(`[API] ${action} OK`, data.data);
     return data.data;
   }
 
-  // ── ขอ GAS token หลัง Google Login ──────
-  async function syncGASToken() {
-    try {
-      const u = sessionStorage.getItem('user');
-      if (!u) return;
-      const user = JSON.parse(u);
-      if (user.gasToken) return;
-
-      if (user.loginMethod === 'google' && CONFIG._hasRealAPI) {
-        const data = await callGASPublic('loginGoogle', {
-          email: user.email,
-          googleToken: user.googleToken || '',
-        });
-        if (data && data.token) {
-          user.gasToken = data.token;
-          sessionStorage.setItem('user', JSON.stringify(user));
-          console.log('[API] GAS token obtained ✅');
-        }
-      }
-    } catch(e) {
-      console.warn('[API] syncGASToken failed:', e.message);
-    }
-  }
-
-  // public call (ไม่ต้องมี token)
+  // ── Public call (ไม่ต้องมี token) ────────
   async function callGASPublic(action, params = {}) {
     const url = CONFIG.API_URL;
     if (!CONFIG._hasRealAPI) throw new Error('ยังไม่ได้ตั้งค่า API_URL');
@@ -75,8 +141,13 @@ const API = (() => {
     return data.data;
   }
 
+  // ── syncGASToken (เรียกจากภายนอกได้) ────
+  async function syncGASToken() {
+    await ensureToken();
+  }
+
   // ════════════════════════════════════════
-  // STUDENTS — Google Sheet 100%
+  // STUDENTS
   // ════════════════════════════════════════
 
   async function getStudents(filter = {}) {
@@ -85,7 +156,6 @@ const API = (() => {
     if (filter.room)       params.room       = filter.room;
     const result = await callGAS('getStudents', params);
     if (!Array.isArray(result)) return [];
-    // normalize field names
     return result.map(s => ({
       ...s,
       id:        s.studentId || s.id || '',
@@ -101,13 +171,11 @@ const API = (() => {
   }
 
   async function addStudent(data) {
-    const payload = normalizeStudent(data);
-    return await callGAS('addStudent', payload);
+    return await callGAS('addStudent', normalizeStudent(data));
   }
 
   async function updateStudent(data) {
-    const payload = normalizeStudent(data);
-    return await callGAS('updateStudent', payload);
+    return await callGAS('updateStudent', normalizeStudent(data));
   }
 
   async function deleteStudent(studentId) {
@@ -115,7 +183,7 @@ const API = (() => {
   }
 
   // ════════════════════════════════════════
-  // ATTENDANCE — Google Sheet 100%
+  // ATTENDANCE
   // ════════════════════════════════════════
 
   async function checkAttendance(studentId, method = 'face', deviceId = 'DEVICE-01', note = '') {
@@ -131,12 +199,11 @@ const API = (() => {
     return await callGAS('updateAttendanceStatus', { studentId, date, status, note });
   }
 
-  // manual add (กรณีไม่มีในระบบเลย)
   async function addManualAttendance(record) {
     return await callGAS('checkAttendance', {
-      studentId: record.studentId,
-      method:    'manual',
-      note:      record.note || 'เช็คชื่อด้วยมือ',
+      studentId:      record.studentId,
+      method:         'manual',
+      note:           record.note || 'เช็คชื่อด้วยมือ',
       overrideStatus: record.status,
     });
   }
@@ -176,34 +243,24 @@ const API = (() => {
   }
 
   // ════════════════════════════════════════
-  // Field mapping helpers
+  // Helpers
   // ════════════════════════════════════════
 
   function normalizeStudent(d) {
     return {
-      studentId:     d.id        || d.studentId     || '',
-      prefix:        d.prefix                        || '',
-      firstName:     d.firstName                     || '',
-      lastName:      d.lastName                      || '',
-      classLevel:    d.classLevel || d.class         || '',
-      room:          String(d.room                   || ''),
-      number:        d.number     || d.no            || 1,
-      gender:        d.gender                        || 'ชาย',
-      faceImageUrl:  d.faceImageUrl || d.imageUrl   || '',
-      faceDescriptor:d.faceDescriptor                || null,
-      activeStatus:  d.activeStatus || d.status     || 'active',
+      studentId:      d.id        || d.studentId     || '',
+      prefix:         d.prefix                        || '',
+      firstName:      d.firstName                     || '',
+      lastName:       d.lastName                      || '',
+      classLevel:     d.classLevel || d.class         || '',
+      room:           String(d.room                   || ''),
+      number:         d.number     || d.no            || 1,
+      gender:         d.gender                        || 'ชาย',
+      faceImageUrl:   d.faceImageUrl || d.imageUrl   || '',
+      faceDescriptor: d.faceDescriptor                || null,
+      activeStatus:   d.activeStatus || d.status     || 'active',
     };
   }
-
-  // ── toast แจ้งผล ──────────────────────────
-  function showSyncBadge(msg, type = 'success') {
-    if (typeof showToast === 'function') showToast(msg, '', type, 2500);
-  }
-
-  // ── sync token ตอน load ──────────────────
-  window.addEventListener('load', () => {
-    syncGASToken();
-  });
 
   // ════════════════════════════════════════
   // Public API
