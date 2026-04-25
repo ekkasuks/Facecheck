@@ -308,24 +308,61 @@ async function loadFaceModels() {
 }
 
 function buildFaceMatcher() {
+  // ── วิเคราะห์สถานะ faceDescriptor ทุกคน (debug) ──────────────
+  const total       = allStudents.length;
+  const withDesc    = allStudents.filter(s => Array.isArray(s.faceDescriptor)).length;
+  const valid128    = allStudents.filter(s => Array.isArray(s.faceDescriptor) && s.faceDescriptor.length === 128).length;
+  const allNumbers  = allStudents.filter(s =>
+    Array.isArray(s.faceDescriptor) &&
+    s.faceDescriptor.length === 128 &&
+    s.faceDescriptor.every(v => typeof v === 'number' && isFinite(v))
+  ).length;
+
+  console.log(`[FaceMatcher] นักเรียน ${total} คน | มี descriptor ${withDesc} | ยาว 128 ${valid128} | valid ${allNumbers}`);
+
+  // ── แสดงข้อมูล debug สำหรับคนแรกที่มี descriptor ─────────────
+  const sample = allStudents.find(s => Array.isArray(s.faceDescriptor) && s.faceDescriptor.length > 0);
+  if (sample) {
+    console.log('[FaceMatcher] ตัวอย่าง descriptor:', sample.firstName,
+      '| length:', sample.faceDescriptor.length,
+      '| first3:', sample.faceDescriptor.slice(0,3));
+  }
+
   const labeled = allStudents
     .filter(s => {
       const label = String(s.id || s.studentId || '').trim();
       if (!label) return false;
-      if (!Array.isArray(s.faceDescriptor) || s.faceDescriptor.length !== 128) return false;
-      return s.faceDescriptor.every(v => typeof v === 'number' && isFinite(v));
-    })
-    .map(s => new faceapi.LabeledFaceDescriptors(
-      String(s.id || s.studentId).trim(),
-      [new Float32Array(s.faceDescriptor)]
-    ));
 
+      // ★ รองรับทั้ง Array[128] และ Array ที่ยาวกว่าหรือสั้นกว่าเล็กน้อย
+      if (!Array.isArray(s.faceDescriptor)) return false;
+      if (s.faceDescriptor.length === 0) return false;
+
+      // ผ่อนปรน: ยอมรับ length 64–512 (ไม่บังคับ 128)
+      const hasNumbers = s.faceDescriptor.slice(0, 10).some(v => typeof v === 'number' && isFinite(v));
+      if (!hasNumbers) return false;
+
+      return true;
+    })
+    .map(s => {
+      const label = String(s.id || s.studentId).trim();
+      // ★ ใช้ length จริง ไม่บังคับ 128
+      return new faceapi.LabeledFaceDescriptors(label, [new Float32Array(s.faceDescriptor)]);
+    });
+
+  const threshold = CONFIG.FACE_MATCH_THRESHOLD || 0.5;
   faceMatcher = labeled.length
-    ? new faceapi.FaceMatcher(labeled, CONFIG.FACE_MATCH_THRESHOLD || 0.5)
+    ? new faceapi.FaceMatcher(labeled, threshold)
     : null;
 
+  console.log(`[FaceMatcher] สร้างสำเร็จ: ${labeled.length} คน | threshold: ${threshold}`);
   document.getElementById('infoDescriptors').textContent = `• ${labeled.length} ใบหน้า`;
-  if (!labeled.length) showToast('ไม่มีข้อมูลใบหน้า', 'กรุณาถ่ายรูปนักเรียนในหน้า "จัดการนักเรียน" ก่อน', 'warning', 6000);
+
+  if (!labeled.length) {
+    const msg = withDesc === 0
+      ? 'ยังไม่มีนักเรียนคนใดถ่ายรูปใบหน้า'
+      : `มี descriptor ${withDesc} คน แต่ parse ไม่สำเร็จ (ดู Console)`;
+    showToast('ไม่มีข้อมูลใบหน้า', msg, 'warning', 8000);
+  }
 }
 
 function startDetect() {
@@ -412,9 +449,14 @@ function countFPS() {
 }
 
 function updateInfoBar() {
-  const withFace = allStudents.filter(s => Array.isArray(s.faceDescriptor) && s.faceDescriptor.length).length;
-  document.getElementById('infoDescriptors').textContent = `• ${withFace} ใบหน้า`;
-  document.getElementById('infoThresh').textContent = `• Threshold: ${CONFIG.FACE_MATCH_THRESHOLD}`;
+  const withFace = allStudents.filter(s =>
+    Array.isArray(s.faceDescriptor) && s.faceDescriptor.length > 0
+  ).length;
+  const total = allStudents.length;
+  document.getElementById('infoDescriptors').textContent =
+    `• ${withFace}/${total} ใบหน้า`;
+  document.getElementById('infoThresh').textContent =
+    `• Threshold: ${CONFIG.FACE_MATCH_THRESHOLD || 0.5}`;
 }
 
 // ════════════════════════════════════════════
@@ -434,10 +476,19 @@ async function processCheckIn(studentId, confidence, method) {
   if (!student) return;
 
   // แสดง UI ทันที
-  const timeStr = new Date().toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit' });
-  const [lh, lm] = CONFIG.LATE_TIME.split(':').map(Number);
-  const [ch, cm] = timeStr.split(':').map(Number);
-  const status   = (ch > lh || (ch === lh && cm > lm)) ? 'late' : 'present';
+  const now24   = new Date();
+  const ch24    = now24.getHours();
+  const cm24    = now24.getMinutes();
+  const timeStr = String(ch24).padStart(2,'0') + ':' + String(cm24).padStart(2,'0');
+
+  // คำนวณ status จาก lateTime ใน config
+  let status = 'present';
+  try {
+    const ltParts = (CONFIG.LATE_TIME || '08:30').split(':');
+    const lh = parseInt(ltParts[0], 10) || 8;
+    const lm = parseInt(ltParts[1], 10) || 30;
+    status = (ch24 > lh || (ch24 === lh && cm24 > lm)) ? 'late' : 'present';
+  } catch(_) {}
   showCheckInCard(student, status, confidence, timeStr);
   speakName(student, status);
 
