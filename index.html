@@ -377,6 +377,34 @@ function processGoogleToken(jwtToken, preDecoded) {
       sessionStorage.setItem('_roleWarning', user.email);
     }
 
+    // ★ ขอ GAS token ทันทีก่อน redirect — ป้องกัน Unauthorized ที่หน้าอื่น
+    setGoogleBtnLoading(false);
+    setOAuthLoading(true);
+    document.getElementById('oauthLoadingText') &&
+      (document.getElementById('oauthLoadingText').textContent = 'กำลังเชื่อมต่อ Google Sheet...');
+
+    if (CONFIG._hasRealAPI) {
+      try {
+        const gasRes = await fetch(CONFIG.API_URL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body:    JSON.stringify({ action:'loginGoogle', email: user.email, googleToken: jwtToken || '' }),
+          mode:    'cors',
+        });
+        const gasData = await gasRes.json();
+        if (gasData.success && gasData.data && gasData.data.token) {
+          user.gasToken = gasData.data.token;
+          user.role     = gasData.data.role || user.role;  // role จาก GAS Sheet
+          sessionStorage.setItem('user', JSON.stringify(user));
+          console.log('[OAuth] GAS token ✅ role:', user.role);
+        } else {
+          console.warn('[OAuth] GAS loginGoogle:', gasData.error || 'no token');
+        }
+      } catch(gasErr) {
+        console.warn('[OAuth] GAS token request failed (จะ retry ที่หน้า dashboard):', gasErr.message);
+      }
+    }
+
     // Redirect ไป dashboard
     window.location.href = 'dashboard.html';
 
@@ -464,7 +492,13 @@ async function doEmailLogin() {
         });
         const data = await res.json();
         if (data.success) {
-          const u = { ...data.data, loginMethod:'password' };
+          // ★ GAS ส่ง token กลับมาใน data.data.token — ใช้เป็น gasToken ด้วย
+          const d = data.data || {};
+          const u = {
+            ...d,
+            loginMethod: 'password',
+            gasToken:    d.token || d.gasToken || '',
+          };
           sessionStorage.setItem('user', JSON.stringify(u));
           window.location.href = 'dashboard.html';
           return;
