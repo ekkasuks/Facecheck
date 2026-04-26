@@ -74,7 +74,7 @@
           <div class="attendance-table-wrapper">
             <table>
               <thead>
-                <tr><th>เลขที่</th><th>ชื่อ-สกุล</th><th>ชั้น/ห้อง</th><th>เวลา</th><th>สถานะ</th><th>วิธี</th><th>หมายเหตุ</th><th>แก้ไข</th></tr>
+                <tr><th>เลขที่</th><th>ชื่อ-สกุล</th><th>ชั้น/ห้อง</th><th>เวลา</th><th>สถานะ</th><th>วิธี</th><th>หมายเหตุ</th><th data-role="admin,teacher">แก้ไข</th></tr>
               </thead>
               <tbody id="dailyTableBody"></tbody>
             </table>
@@ -258,6 +258,7 @@ async function loadDailyReport() {
 }
 
 async function updateStatus(studentId, date, status) {
+  if (!hasRole(['admin','teacher'])) { showToast('ไม่มีสิทธิ์','เฉพาะ Admin/Teacher','error'); return; }
   try {
     await API.updateAttendanceStatus(studentId, date, status);
     const s = _students.find(st => (st.studentId||st.id) === studentId);
