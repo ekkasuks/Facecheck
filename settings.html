@@ -258,6 +258,7 @@
 <script src="scripts/api.js"></script>
 <script>
 requireAuth();
+requireRole(['admin']); // ★ settings เฉพาะ admin
 
 document.addEventListener('DOMContentLoaded', async () => {
   renderSidebar('settings');
@@ -381,6 +382,7 @@ async function renderDataStats() {
 // Save Settings → Google Sheet
 // ════════════════════════════════════════════
 async function saveSchoolSettings() {
+  if (!hasRole(['admin'])) { showToast('ไม่มีสิทธิ์','','error'); return; }
   const name    = document.getElementById('schoolName').value.trim();
   const short   = document.getElementById('schoolShort').value.trim();
   const logo    = document.getElementById('schoolLogo').value.trim();
@@ -402,6 +404,7 @@ async function saveSchoolSettings() {
 }
 
 async function saveAttendanceSettings() {
+  if (!hasRole(['admin'])) { showToast('ไม่มีสิทธิ์','','error'); return; }
   const lateTime  = document.getElementById('lateTime').value;
   const absentTime= document.getElementById('absentTime').value;
   const dupMin    = document.getElementById('dupMinutes').value;
@@ -524,6 +527,7 @@ async function exportStudentsCSV() {
 }
 
 async function importStudentsCSV(input) {
+  if (!hasRole(['admin'])) { showToast('ไม่มีสิทธิ์','เฉพาะ Admin เท่านั้น','error'); return; }
   const file = input.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = async (e) => {
