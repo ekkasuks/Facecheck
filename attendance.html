@@ -491,28 +491,36 @@ async function processCheckIn(studentId, confidence, method) {
     status = (ch24 > lh || (ch24 === lh && cm24 > lm)) ? 'late' : 'present';
   } catch(_) {}
   showCheckInCard(student, status, confidence, timeStr);
-  speakName(student, status);
+  // ★ ยังไม่อ่านชื่อ — รอผลจาก GAS ก่อน เพื่อไม่อ่านซ้ำถ้า duplicate
 
   // บันทึกลง Google Sheet
   try {
     const result = await API.checkAttendance(studentId, method, 'WEB-DEVICE');
+
     if (result.duplicate) {
+      // ★ เช็คชื่อซ้ำ → ไม่อ่านชื่อ แสดง card แจ้งเตือนเงียบๆ
       showDuplicateCard(student);
-      cooldowns[studentId] = now - (COOLDOWN - 5000); // reset cooldown เร็วขึ้น
+      cooldowns[studentId] = now - (COOLDOWN - 5000);
       return;
     }
-    // เพิ่มใน todayRecs สำหรับแสดง
+
+    // ★ เช็คชื่อสำเร็จครั้งแรก → อ่านชื่อ 1 ครั้ง
+    const finalStatus = result.status || status;
+    speakName(student, finalStatus);
+
     todayRecs.unshift({
       studentId, studentName: `${student.prefix||''}${student.firstName||''} ${student.lastName||''}`,
       classLevel: student.classLevel||'', room: student.room||'',
       date: result.date || new Date().toISOString().split('T')[0],
       time: result.time || timeStr,
-      status: result.status || status, method,
+      status: finalStatus, method,
     });
     renderToday();
-    showToast(`${student.prefix||''}${student.firstName||''} ${student.lastName||''}`,
-      `${STATUS_LABELS[result.status||status].label} · ${result.time||timeStr} ✅ บันทึกลง Sheet`,
-      result.status === 'present' ? 'face' : 'warning');
+    showToast(
+      `${student.prefix||''}${student.firstName||''} ${student.lastName||''}`,
+      `${STATUS_LABELS[finalStatus].label} · ${result.time||timeStr} ✅ บันทึกลง Sheet`,
+      finalStatus === 'present' ? 'face' : 'warning'
+    );
   } catch(err) {
     console.error('[CheckIn]', err.message);
     showToast('บันทึกล้มเหลว', err.message, 'error');
