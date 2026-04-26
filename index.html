@@ -328,7 +328,7 @@ function handleGoogleCredential(response) {
 }
 
 // ── Decode JWT และ Login ──
-function processGoogleToken(jwtToken, preDecoded) {
+async function processGoogleToken(jwtToken, preDecoded) {
   try {
     let payload;
 
