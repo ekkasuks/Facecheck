@@ -75,7 +75,7 @@
         </div>
         <button class="btn btn-ghost" onclick="reloadStudents()" title="โหลดข้อมูลจาก Google Sheet">🔄 Reload</button>
         <button class="btn btn-ghost" onclick="exportCSV()">📥 CSV</button>
-        <button class="btn btn-primary" onclick="openAdd()">+ เพิ่มนักเรียน</button>
+        <button class="btn btn-primary" onclick="openAdd()" data-role="admin">+ เพิ่มนักเรียน</button>
       </div>
 
       <div id="countLabel" class="text-sm text-muted mb-16"></div>
@@ -203,6 +203,7 @@
 <script src="scripts/api.js"></script>
 <script>
 requireAuth();
+requireRole(['admin']); // ★ เฉพาะ admin เท่านั้น
 
 // ── State ────────────────────────────────
 let students    = [];
@@ -359,6 +360,7 @@ function setView(v) {
 
 // ── Modal ─────────────────────────────────
 function openAdd() {
+  if (!hasRole(['admin'])) { showToast('ไม่มีสิทธิ์','เฉพาะ Admin เท่านั้น','error'); return; }
   editingId = null; capturedImg = null; capturedDesc = null;
   document.getElementById('modalTitle').textContent = '➕ เพิ่มนักเรียน';
   resetForm();
@@ -372,6 +374,7 @@ function openAdd() {
 }
 
 function openEdit(id) {
+  if (!hasRole(['admin'])) { showToast('ไม่มีสิทธิ์','เฉพาะ Admin เท่านั้น','error'); return; }
   editingId = id;
   const s = students.find(st => (st.studentId||st.id) === id);
   if (!s) return;
@@ -418,6 +421,7 @@ function resetForm() {
 
 // ── Save ──────────────────────────────────
 async function saveStudent() {
+  if (!hasRole(['admin'])) { showToast('ไม่มีสิทธิ์','เฉพาะ Admin เท่านั้น','error'); return; }
   const id        = document.getElementById('fId').value.trim();
   const firstName = document.getElementById('fFirst').value.trim();
   const lastName  = document.getElementById('fLast').value.trim();
@@ -483,6 +487,7 @@ async function saveStudent() {
 
 // ── Delete ────────────────────────────────
 function removeStudent(id) {
+  if (!hasRole(['admin'])) { showToast('ไม่มีสิทธิ์','เฉพาะ Admin เท่านั้น','error'); return; }
   const s = students.find(st => (st.studentId||st.id) === id);
   confirm(
     'ลบนักเรียน',
