@@ -8,7 +8,7 @@ const CONFIG = {
   // ══════════════════════════════════════════
   //  ★ 1) Google Apps Script URL ★
   // ══════════════════════════════════════════
-  API_URL: 'https://script.google.com/macros/s/AKfycbxF_mxKfeUwJW0IfYML-BJPo5eRMXa7X697Z0J6yeMLLgUJ3YLoMFNn6cO70Kw454fm/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbwlAZ5sWJR4Uvl-Y7zYzN6sG_tu3Ai0cuXDPvd5lbDsIqcLcvnNlpNI44nhH6gjPHtc/exec',
 
   // ══════════════════════════════════════════
   //  ★ 2) Google OAuth 2.0 Client ID ★
