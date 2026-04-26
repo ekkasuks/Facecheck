@@ -121,13 +121,16 @@ function renderSidebar(activePage) {
   const sidebar = document.getElementById('sidebar');
   if (!sidebar) return;
 
+  const role = user.role || 'viewer';
+
+  // ★ กำหนดสิทธิ์เข้าถึงแต่ละหน้าตาม role
   const nav = [
-    { icon:'📊', label:'แดชบอร์ด',  href:'dashboard.html',  page:'dashboard'  },
-    { icon:'📷', label:'เช็คชื่อ',   href:'attendance.html', page:'attendance' },
-    { icon:'👥', label:'นักเรียน',   href:'students.html',   page:'students'   },
-    { icon:'📋', label:'รายงาน',     href:'reports.html',    page:'reports'    },
-    { icon:'⚙️', label:'ตั้งค่า',    href:'settings.html',   page:'settings'   },
-  ];
+    { icon:'📊', label:'แดชบอร์ด',  href:'dashboard.html',  page:'dashboard',  roles:['admin','teacher','viewer'] },
+    { icon:'📷', label:'เช็คชื่อ',   href:'attendance.html', page:'attendance', roles:['admin','teacher'] },
+    { icon:'👥', label:'นักเรียน',   href:'students.html',   page:'students',   roles:['admin'] },
+    { icon:'📋', label:'รายงาน',     href:'reports.html',    page:'reports',    roles:['admin','teacher','viewer'] },
+    { icon:'⚙️', label:'ตั้งค่า',    href:'settings.html',   page:'settings',   roles:['admin'] },
+  ].filter(item => item.roles.includes(role));
 
   const initials = (user.name || user.email || 'U')
     .split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
@@ -285,6 +288,52 @@ function getDateRange(type) {
   return { start: today, end: today };
 }
 
+
+// ════════════════════════════════════════════
+// Role Permission Guards
+// ════════════════════════════════════════════
+
+/** คืน role ปัจจุบัน */
+function getUserRole() {
+  const u = getCurrentUser();
+  return u ? (u.role || 'viewer') : 'viewer';
+}
+
+/**
+ * ตรวจสิทธิ์ — ถ้าไม่มีสิทธิ์ redirect กลับ dashboard
+ * @param {string[]} allowedRoles เช่น ['admin'] หรือ ['admin','teacher']
+ */
+function requireRole(allowedRoles) {
+  const role = getUserRole();
+  if (!allowedRoles.includes(role)) {
+    alert('⛔ คุณไม่มีสิทธิ์เข้าถึงหน้านี้\n(ต้องการ: ' + allowedRoles.join('/') + ' | ของคุณ: ' + role + ')');
+    window.location.href = 'dashboard.html';
+    return false;
+  }
+  return true;
+}
+
+/**
+ * ตรวจสิทธิ์แบบ silent — คืน true/false ไม่ redirect
+ */
+function hasRole(allowedRoles) {
+  return allowedRoles.includes(getUserRole());
+}
+
+/**
+ * ซ่อน element ที่ viewer ไม่ควรเห็น
+ * ใช้โดยใส่ attribute data-role="admin" หรือ data-role="admin,teacher"
+ */
+function applyRoleVisibility() {
+  const role = getUserRole();
+  document.querySelectorAll('[data-role]').forEach(el => {
+    const allowed = el.getAttribute('data-role').split(',').map(r => r.trim());
+    if (!allowed.includes(role)) {
+      el.style.display = 'none';
+    }
+  });
+}
+
 // ════════════════════════════════════════════
 // Auto-init
 // ════════════════════════════════════════════
@@ -296,4 +345,6 @@ document.addEventListener('DOMContentLoaded', () => {
     tc.id = 'toast-container';
     document.body.appendChild(tc);
   }
+  // ★ ซ่อน element ที่ viewer ไม่ควรเห็น (data-role attribute)
+  applyRoleVisibility();
 });
