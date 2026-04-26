@@ -61,29 +61,71 @@ function handleRequest(params) {
       }
     }
 
-    let result;
+    // ★ ดึง role จาก token (ใช้ตรวจสิทธิ์)
+    var authPayload = null;
+    try {
+      var authResult = verifyToken(token);
+      if (authResult.valid) authPayload = authResult.payload;
+    } catch(_) {}
+    var callerRole = (authPayload && authPayload.role) ? String(authPayload.role) : 'viewer';
+
+    // ── role guard helper ──────────────────────────────────────────────────
+    function requireGASRole(allowedRoles) {
+      if (allowedRoles.indexOf(callerRole) === -1) {
+        throw new Error('PermissionDenied: ต้องการสิทธิ์ ' + allowedRoles.join('/') + ' (ปัจจุบัน: ' + callerRole + ')');
+      }
+    }
+
+    var result;
     switch (action) {
       case 'ping':        result = doPing();               break;
       case 'login':       result = doLogin(params);        break;
       case 'loginGoogle': result = doLoginGoogle(params);  break;
 
+      // ── READ: ทุก role ดูได้ ──────────────────────────────────────────────
       case 'getStudents':    result = doGetStudents(params);    break;
-      case 'addStudent':     result = doAddStudent(params);     break;
-      case 'updateStudent':  result = doUpdateStudent(params);  break;
-      case 'deleteStudent':  result = doDeleteStudent(params);  break;
+      case 'getAttendance':  result = doGetAttendance(params);  break;
+      case 'getDashboard':   result = doGetDashboard(params);   break;
+      case 'getSettings':    result = doGetSettings();          break;
+      case 'getClassSummary':result = doGetClassSummary(params);break;
 
-      case 'checkAttendance':        result = doCheckAttendance(params);        break;
-      case 'getAttendance':          result = doGetAttendance(params);          break;
-      case 'updateAttendanceStatus': result = doUpdateAttendanceStatus(params); break;
+      // ── WRITE students: admin เท่านั้น ───────────────────────────────────
+      case 'addStudent':
+        requireGASRole(['admin']);
+        result = doAddStudent(params);
+        break;
+      case 'updateStudent':
+        requireGASRole(['admin']);
+        result = doUpdateStudent(params);
+        break;
+      case 'deleteStudent':
+        requireGASRole(['admin']);
+        result = doDeleteStudent(params);
+        break;
+      case 'uploadFaceImage':
+        requireGASRole(['admin']);
+        result = doUploadFaceImage(params);
+        break;
+      case 'saveFaceDescriptor':
+        requireGASRole(['admin']);
+        result = doSaveFaceDescriptor(params);
+        break;
 
-      case 'getDashboard':    result = doGetDashboard(params);    break;
-      case 'getClassSummary': result = doGetClassSummary(params); break;
+      // ── WRITE attendance: admin + teacher ────────────────────────────────
+      case 'checkAttendance':
+        requireGASRole(['admin','teacher']);
+        result = doCheckAttendance(params);
+        break;
+      case 'updateAttendanceStatus':
+        requireGASRole(['admin','teacher']);
+        result = doUpdateAttendanceStatus(params);
+        break;
 
-      case 'uploadFaceImage':    result = doUploadFaceImage(params);    break;
-      case 'saveFaceDescriptor': result = doSaveFaceDescriptor(params); break;
-
-      case 'getSettings':  result = doGetSettings();       break;
-      case 'saveSetting':  result = doSaveSetting(params); break;
+      // ── settings: admin เท่านั้น ─────────────────────────────────────────
+      case 'saveSetting':
+        requireGASRole(['admin']);
+        result = doSaveSetting(params);
+        break;
 
       default:
         return respond({ success: false, error: 'Unknown action: "' + action + '"' });
@@ -207,10 +249,27 @@ function doGetStudents(p) {
     if (p.classLevel && s.classLevel !== p.classLevel) continue;
     if (p.room       && String(s.room) !== String(p.room)) continue;
 
-    if (s.faceDescriptorJson) {
-      try { s.faceDescriptor = JSON.parse(s.faceDescriptorJson); } catch (_) {}
+    // ★ parse faceDescriptorJson → Array[128]
+    //   ต้องตรวจทุกกรณี: ว่าง, string, Array ที่ parse แล้ว
+    var rawDesc = s.faceDescriptorJson;
+    s.faceDescriptor = null;  // default
+    if (rawDesc) {
+      var parsed = null;
+      if (Array.isArray(rawDesc)) {
+        parsed = rawDesc;                  // Sheet อาจส่งเป็น Array ตรงๆ
+      } else {
+        try { parsed = JSON.parse(String(rawDesc)); } catch(_) {}
+      }
+      if (Array.isArray(parsed) && parsed.length === 128) {
+        s.faceDescriptor = parsed;
+      }
     }
     delete s.faceDescriptorJson;
+    // Ensure all string fields are strings (ป้องกัน Date object)
+    ['studentId','prefix','firstName','lastName','classLevel','room',
+     'gender','faceImageUrl','activeStatus'].forEach(function(k) {
+      if (s[k] !== undefined && s[k] !== null) s[k] = String(s[k]);
+    });
     list.push(s);
   }
   return list;
@@ -288,54 +347,86 @@ function doDeleteStudent(p) {
 
 function doCheckAttendance(p) {
   if (!p || !p.studentId) throw new Error('ต้องระบุ studentId');
-  const studentId = String(p.studentId);
-  const tz    = 'Asia/Bangkok';
-  const now   = new Date();
-  const date  = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
-  const time  = Utilities.formatDate(now, tz, 'HH:mm');
-  const sheet = openSheet(SHEETS.ATTENDANCE);
+  var studentId = String(p.studentId);
+  var tz        = 'Asia/Bangkok';
+  var now       = new Date();
+  var date      = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var time      = Utilities.formatDate(now, tz, 'HH:mm');
+  var sheet     = openSheet(SHEETS.ATTENDANCE);
 
-  const settings = doGetSettings();
-  const dupMin   = parseInt(settings['checkDuplicateMinutes'] || '10');
-  const lateTime = settings['lateTime'] || '08:30';
+  var settings = doGetSettings();
+
+  // ★ dupMin: parseInt หลัง String() เพื่อป้องกัน NaN
+  var dupMinRaw = settings['checkDuplicateMinutes'];
+  var dupMin    = 10;
+  if (dupMinRaw !== undefined && dupMinRaw !== '') {
+    var parsed = parseInt(String(dupMinRaw), 10);
+    if (!isNaN(parsed) && parsed > 0) dupMin = parsed;
+  }
+
+  // ★ lateTime: ตรวจสอบว่ามี ':' ก่อน split เสมอ
+  var lateTimeRaw = settings['lateTime'];
+  var lateTime    = '08:30'; // default
+  if (lateTimeRaw && String(lateTimeRaw).indexOf(':') !== -1) {
+    lateTime = String(lateTimeRaw).trim();
+  }
 
   // Anti-duplicate (ข้ามถ้าเป็น manual override)
-  const isManualOverride = !!p.overrideStatus;
+  var isManualOverride = !!p.overrideStatus;
   if (!isManualOverride) {
-    const rows = sheet.getDataRange().getValues();
-    for (let i = 1; i < rows.length; i++) {
-      if (String(rows[i][3]) === studentId && String(rows[i][1]) === date) {
-        const prev = new Date(date + 'T' + rows[i][2] + ':00+07:00').getTime();
+    var rows = sheet.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      var rowDate = rows[i][1] instanceof Date
+        ? Utilities.formatDate(rows[i][1], tz, 'yyyy-MM-dd')
+        : String(rows[i][1] || '').slice(0, 10);
+      var rowTime = rows[i][2] instanceof Date
+        ? Utilities.formatDate(rows[i][2], tz, 'HH:mm')
+        : String(rows[i][2] || '00:00');
+      if (String(rows[i][3]) === studentId && rowDate === date) {
+        var prev = new Date(date + 'T' + rowTime + ':00+07:00').getTime();
         if (now.getTime() - prev < dupMin * 60000) {
-          return { duplicate: true, message: 'เช็คชื่อแล้ว', existingTime: rows[i][2] };
+          return { duplicate: true, message: 'เช็คชื่อแล้ว', existingTime: rowTime };
         }
       }
     }
   }
 
-  // Status — รองรับ overrideStatus (จากการแก้ไขด้วยมือ)
-  let status;
-  if (p.overrideStatus && ['present','late','absent','leave'].includes(p.overrideStatus)) {
+  // คำนวณ status
+  var status;
+  var validStatuses = ['present', 'late', 'absent', 'leave'];
+  if (p.overrideStatus && validStatuses.indexOf(p.overrideStatus) !== -1) {
     status = p.overrideStatus;
-  } else if (p.status && ['present','late','absent','leave'].includes(p.status)) {
+  } else if (p.status && validStatuses.indexOf(p.status) !== -1) {
     status = p.status;
   } else {
-    const [lh, lm] = lateTime.split(':').map(Number);
-    const [ch, cm] = time.split(':').map(Number);
-    status = (ch > lh || (ch === lh && cm > lm)) ? 'late' : 'present';
+    try {
+      var lParts = lateTime.split(':');
+      var lh = parseInt(lParts[0], 10) || 8;
+      var lm = parseInt(lParts[1], 10) || 30;
+      var cParts = time.split(':');
+      var ch = parseInt(cParts[0], 10);
+      var cm = parseInt(cParts[1], 10);
+      status = (ch > lh || (ch === lh && cm > lm)) ? 'late' : 'present';
+    } catch (e) {
+      status = 'present';
+      safeLog('WARN', 'doCheckAttendance', 'lateTime parse error: ' + lateTime + ' | ' + e.message);
+    }
   }
 
-  const students = doGetStudents({});
-  const st   = students.find(s => String(s.studentId) === studentId);
-  const name = st
-    ? ((st.prefix||'') + (st.firstName||'') + ' ' + (st.lastName||'')).trim()
+  var students = doGetStudents({});
+  var st = null;
+  for (var j = 0; j < students.length; j++) {
+    if (String(students[j].studentId) === studentId) { st = students[j]; break; }
+  }
+  var name = st
+    ? ((st.prefix || '') + (st.firstName || '') + ' ' + (st.lastName || '')).trim()
     : studentId;
 
-  const aId = generateId('A');
+  var aId = generateId('A');
   sheet.appendRow([
     aId, date, time, studentId, name,
     st ? st.classLevel : '',
-    st ? st.room : '',
+    st ? st.room       : '',
     status,
     p.method   || 'manual',
     p.deviceId || 'DEVICE-01',
@@ -344,31 +435,54 @@ function doCheckAttendance(p) {
   ]);
   safeLog('CHECKIN', studentId, status + '@' + time);
   return {
-    attendanceId: aId, studentId, studentName: name,
-    date, time, status,
-    classLevel: st ? st.classLevel : '',
-    room:       st ? st.room       : ''
+    attendanceId: aId,
+    studentId:    studentId,
+    studentName:  name,
+    date:         date,
+    time:         time,
+    status:       status,
+    classLevel:   st ? st.classLevel : '',
+    room:         st ? st.room       : ''
   };
 }
 
 function doGetAttendance(p) {
   if (!p) p = {};
-  const sheet   = openSheet(SHEETS.ATTENDANCE);
-  const data    = sheet.getDataRange().getValues();
-  const headers = data[0] || [];
-  const list    = [];
+  var tz      = 'Asia/Bangkok';
+  var sheet   = openSheet(SHEETS.ATTENDANCE);
+  var data    = sheet.getDataRange().getValues();
+  var headers = data[0] || [];
+  var list    = [];
 
-  for (let i = 1; i < data.length; i++) {
+  // TIME_FIELDS — columns ที่เป็น Date object แต่ต้อง format ต่างกัน
+  var dateFields = { date: true, createdAt: true };
+  var timeFields = { time: true };
+
+  for (var i = 1; i < data.length; i++) {
     if (!data[i][0]) continue;
-    const r = {};
-    headers.forEach((h, j) => {
-      r[h] = data[i][j] instanceof Date
-        ? Utilities.formatDate(data[i][j], 'Asia/Bangkok', 'yyyy-MM-dd')
-        : data[i][j];
+    var r = {};
+    headers.forEach(function(h, j) {
+      var raw = data[i][j];
+      if (raw instanceof Date) {
+        if (timeFields[h]) {
+          // ★ คอลัมน์ time → format เป็น HH:mm
+          r[h] = Utilities.formatDate(raw, tz, 'HH:mm');
+        } else {
+          // date, createdAt → format เป็น yyyy-MM-dd
+          r[h] = Utilities.formatDate(raw, tz, 'yyyy-MM-dd');
+        }
+      } else {
+        r[h] = (raw === null || raw === undefined) ? '' : raw;
+      }
     });
-    // normalize date field
-    if (r.date && r.date.toString().length > 10) {
-      r.date = r.date.toString().slice(0, 10);
+
+    // normalize: ตัดส่วนเวลาออกถ้า date field ยาวเกิน
+    if (r.date && String(r.date).length > 10) {
+      r.date = String(r.date).slice(0, 10);
+    }
+    // ตรวจ time field — ถ้าเป็น string ยาว ตัดเอา HH:mm
+    if (r.time && String(r.time).length > 5) {
+      r.time = String(r.time).slice(0, 5);
     }
 
     if (p.date       && String(r.date)       !== String(p.date))       continue;
@@ -391,11 +505,14 @@ function doUpdateAttendanceStatus(p) {
   const tz    = 'Asia/Bangkok';
   const now   = new Date();
 
-  for (let i = 1; i < data.length; i++) {
-    const byId  = p.attendanceId && String(data[i][0]) === String(p.attendanceId);
-    const byKey = p.studentId && p.date &&
-                  String(data[i][3]) === String(p.studentId) &&
-                  String(data[i][1]).slice(0,10) === String(p.date);
+  for (var i = 1; i < data.length; i++) {
+    var rowDate = data[i][1] instanceof Date
+      ? Utilities.formatDate(data[i][1], tz, 'yyyy-MM-dd')
+      : String(data[i][1] || '').slice(0, 10);
+    var byId  = p.attendanceId && String(data[i][0]) === String(p.attendanceId);
+    var byKey = p.studentId && p.date &&
+                String(data[i][3]) === String(p.studentId) &&
+                rowDate === String(p.date);
     if (byId || byKey) {
       sheet.getRange(i+1, 8).setValue(p.status || 'present');
       sheet.getRange(i+1,11).setValue(p.note   || 'แก้ไขโดยครู');
@@ -545,8 +662,24 @@ function doGetSettings() {
   const sheet = openSheet(SHEETS.SETTINGS);
   const data  = sheet.getDataRange().getValues();
   const out   = {};
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0]) out[String(data[i][0])] = data[i][1];
+  for (var i = 1; i < data.length; i++) {
+    if (!data[i][0]) continue;
+    var key = String(data[i][0]).trim();
+    var raw = data[i][1];
+
+    // ★ Google Sheets อาจส่งค่าเป็น Date object, Number, หรือ Boolean
+    //    บังคับเป็น String เสมอเพื่อป้องกัน .split() crash
+    var val;
+    if (raw === null || raw === undefined || raw === '') {
+      val = '';
+    } else if (raw instanceof Date) {
+      // เวลา เช่น 08:30 → Sheets เก็บเป็น Date object
+      val = Utilities.formatDate(raw, 'Asia/Bangkok', 'HH:mm');
+    } else {
+      val = String(raw).trim();
+    }
+
+    out[key] = val;
   }
   return out;
 }
@@ -565,11 +698,11 @@ function doSaveSetting(p) {
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === key) {
       sheet.getRange(i+1, 2).setValue(value);
-      sheet.getRange(i+1, 3).setValue(new Date().toISOString());
+      sheet.getRange(i+1, 3).setValue(Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd HH:mm:ss'));
       return { success: true };
     }
   }
-  sheet.appendRow([key, value, new Date().toISOString()]);
+  sheet.appendRow([key, value, Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd HH:mm:ss')]);
   return { success: true };
 }
 
@@ -775,16 +908,16 @@ function testAPI() {
 
 function insertSampleStudents() {
   var samples = [
-    ['S001','ด.ช.','ธนกฤต',   'มั่นคง',       'ม.1','1',1,'ชาย'],
-    ['S002','ด.ญ.','พิชญา',    'สุวรรณ',       'ม.1','1',2,'หญิง'],
-    ['S003','ด.ช.','กิตติภูมิ','โชติกิจ',       'ม.1','1',3,'ชาย'],
-    ['S004','ด.ญ.','ณัฐนรี',   'ทองดี',         'ม.1','2',1,'หญิง'],
-    ['S005','ด.ช.','ชยานันต์', 'พิสุทธิ์',      'ม.2','1',1,'ชาย'],
-    ['S006','ด.ญ.','อริสา',    'วงศ์สว่าง',     'ม.2','1',2,'หญิง'],
-    ['S007','ด.ช.','ภัทรพล',   'สิงห์เดช',      'ม.2','2',1,'ชาย'],
-    ['S008','ด.ญ.','วราภรณ์',  'นาคประเสริฐ',   'ม.3','1',1,'หญิง'],
-    ['S009','ด.ช.','ศุภณัฐ',   'เกษมสุข',       'ม.3','1',2,'ชาย'],
-    ['S010','ด.ญ.','ปัณฑิตา',  'ชลวิถี',        'ม.3','2',1,'หญิง'],
+    ['S001','ด.ช.','ธนกฤต',   'มั่นคง',        'อนุบาล2','1',1,'ชาย'],
+    ['S002','ด.ญ.','พิชญา',    'สุวรรณ',        'อนุบาล2','1',2,'หญิง'],
+    ['S003','ด.ช.','กิตติภูมิ','โชติกิจ',        'อนุบาล3','1',1,'ชาย'],
+    ['S004','ด.ญ.','ณัฐนรี',   'ทองดี',          'อนุบาล3','1',2,'หญิง'],
+    ['S005','ด.ช.','ชยานันต์', 'พิสุทธิ์',       'ป.1','1',1,'ชาย'],
+    ['S006','ด.ญ.','อริสา',    'วงศ์สว่าง',      'ป.1','1',2,'หญิง'],
+    ['S007','ด.ช.','ภัทรพล',   'สิงห์เดช',       'ป.2','1',1,'ชาย'],
+    ['S008','ด.ญ.','วราภรณ์',  'นาคประเสริฐ',    'ป.3','1',1,'หญิง'],
+    ['S009','ด.ช.','ศุภณัฐ',   'เกษมสุข',        'ป.4','1',1,'ชาย'],
+    ['S010','ด.ญ.','ปัณฑิตา',  'ชลวิถี',         'ป.5','1',1,'หญิง'],
   ];
   var sheet    = openSheet(SHEETS.STUDENTS);
   var existing = sheet.getDataRange().getValues().map(function(r){ return String(r[0]); });
