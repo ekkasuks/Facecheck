@@ -248,6 +248,7 @@ function switchMode(m) {
 
 // ── Camera & Face Detection ───────────────
 async function openCamera() {
+  if (!hasRole(['admin','teacher'])) { showToast('ไม่มีสิทธิ์','ต้องเป็น Admin หรือ Teacher','error'); return; }
   document.getElementById('btnOpen').disabled = true;
   document.getElementById('camPlaceholder').style.display = 'none';
 
@@ -464,6 +465,7 @@ function updateInfoBar() {
 // ════════════════════════════════════════════
 
 async function processCheckIn(studentId, confidence, method) {
+  if (!hasRole(['admin','teacher'])) return;
   const now = Date.now();
   if (cooldowns[studentId] && now - cooldowns[studentId] < COOLDOWN) {
     const s = allStudents.find(st => st.id === studentId || st.studentId === studentId);
@@ -686,6 +688,7 @@ function updateSum() {
 }
 
 async function saveManual() {
+  if (!hasRole(['admin','teacher'])) { showToast('ไม่มีสิทธิ์','ต้องเป็น Admin หรือ Teacher','error'); return; }
   const cls  = document.getElementById('mClass').value;
   const room = document.getElementById('mRoom').value;
   if (!cls || !room) { showToast('เลือกห้องเรียนก่อน','','warning'); return; }
