@@ -58,9 +58,7 @@
         </div>
         <select class="form-select" id="fClass" onchange="renderStudents()" style="width:110px">
           <option value="">ทุกชั้น</option>
-          <option>  </option><option>อนุบาล2</option><option>อนุบาล3</option>
-          <option>ป.1</option><option>ป.2</option><option>ป.3</option>
-          <option>ป.4</option><option>ป.5</option><option>ป.6</option><option>คุณครู</option>
+          <option>อนุบาล2</option><option>อนุบาล3</option><option>ป.1</option><option>ป.2</option><option>ป.3</option><option>ป.4</option><option>ป.5</option><option>ป.6</option><option>ครู</option>
         </select>
         <select class="form-select" id="fRoom" onchange="renderStudents()" style="width:90px">
           <option value="">ทุกห้อง</option>
@@ -137,9 +135,7 @@
       <div class="form-group">
         <label class="form-label">ชั้น *</label>
         <select class="form-select" id="fClassLevel">
-           <option>  </option><option>อนุบาล2</option><option>อนุบาล3</option>
-          <option>ป.1</option><option>ป.2</option><option>ป.3</option>
-          <option>ป.4</option><option>ป.5</option><option>ป.6</option><option>คุณครู</option>
+          <option>อนุบาล2</option><option>อนุบาล3</option><option>ป.1</option><option>ป.2</option><option>ป.3</option><option>ป.4</option><option>ป.5</option><option>ป.6</option><option>ครู</option>
         </select>
       </div>
       <div class="form-group">
@@ -383,7 +379,7 @@ function openEdit(id) {
   document.getElementById('fPrefix').value     = s.prefix      || 'ด.ช.';
   document.getElementById('fFirst').value      = s.firstName   || '';
   document.getElementById('fLast').value       = s.lastName    || '';
-  document.getElementById('fClassLevel').value = s.classLevel  || 'ม.1';
+  document.getElementById('fClassLevel').value = s.classLevel  || 'อนุบาล2';
   document.getElementById('fRoom2').value      = String(s.room || '1');
   document.getElementById('fNo').value         = s.number || s.no || 1;
   document.getElementById('fGender').value     = s.gender || 'ชาย';
